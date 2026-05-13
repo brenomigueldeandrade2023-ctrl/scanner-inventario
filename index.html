@@ -2302,6 +2302,19 @@
   });
 
   // ---------- Init ----------
+  // Magic-link: ?key=AIza... → saves to localStorage and cleans URL
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlKey = urlParams.get('key') || urlParams.get('gemini');
+    if (urlKey && /^AIza[\w-]{30,}$/.test(urlKey)) {
+      geminiKey = urlKey;
+      localStorage.setItem(LS_GEMINI_KEY, geminiKey);
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      setTimeout(() => toast('✓ Chave Gemini salva — feature IA pronta'), 300);
+    }
+  } catch {}
   geminiKeyInput.value = geminiKey;
   updateGeminiStatus();
   if (localStorage.getItem(LS_SETTINGS_OPEN) === '1' && !geminiKey) openSettings();

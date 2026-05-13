@@ -450,7 +450,7 @@
 <body>
 
 <header>
-  <h1>📦 Scanner Inventário</h1>
+  <h1>📦 Scanner <span style="font-size:10px; color:#64748b; font-weight:400; vertical-align: middle;">v7</span></h1>
   <div class="stats" id="stats">0 itens</div>
 </header>
 
@@ -900,11 +900,9 @@
     ];
   }
 
-  let useFacingMode = true; // true on first start; flip switches to specific cameras
-
   async function startCamera() {
     if (typeof Html5Qrcode === 'undefined') {
-      toast('Biblioteca de scanner não carregou — verifique a conexão', 'error');
+      toast('Biblioteca de scanner não carregou', 'error');
       return;
     }
     await ensureAudio();
@@ -915,6 +913,42 @@
       btnCamera.classList.add('btn-secondary');
       scanStatus.textContent = '📡 iniciando câmera...';
 
+      // 1) Get list of cameras (also triggers permission prompt on first run)
+      if (cameras.length === 0) {
+        try {
+          cameras = await Html5Qrcode.getCameras();
+          console.log('[scanner] cameras:', cameras.map(c => `"${c.label}"`).join(', '));
+        } catch (e) {
+          console.error('[scanner] getCameras failed:', e);
+          toast('Permissão de câmera negada — autorize nas config do Safari', 'error');
+          await stopCamera();
+          return;
+        }
+      }
+      if (!cameras || cameras.length === 0) {
+        toast('Nenhuma câmera encontrada', 'error');
+        await stopCamera();
+        return;
+      }
+
+      // 2) Pick best back camera (prefer "Triple" or unqualified "Back", avoid Ultra Wide/Tele)
+      if (!currentCameraId) {
+        const rearAll = cameras.filter(c => /back|rear|traseira/i.test(c.label || ''));
+        let chosen;
+        if (rearAll.length > 0) {
+          chosen = rearAll.find(c => /triple/i.test(c.label || ''))
+                || rearAll.find(c => !/ultra|tele/i.test(c.label || ''))
+                || rearAll[0];
+        } else {
+          // Labels can be empty on iOS first call — last device is usually rear
+          chosen = cameras[cameras.length - 1];
+        }
+        currentCameraId = chosen.id;
+        console.log('[scanner] selected:', chosen.label || '(no label)', chosen.id);
+      }
+
+      btnFlip.style.display = cameras.length > 1 ? 'inline-block' : 'none';
+
       if (!scanner) {
         const formats = getSupportedFormats();
         scanner = new Html5Qrcode("reader", {
@@ -924,81 +958,37 @@
         });
       }
 
-      const config = {
-        fps: 15,
-        aspectRatio: 1.333334,
-        disableFlip: true
-      };
-      const onSuccess = (decodedText) => {
-        scanStatus.textContent = '✓ ' + decodedText;
-        onScan(decodedText);
-      };
+      const config = { fps: 15, aspectRatio: 1.333334, disableFlip: true };
+      const onSuccess = (text) => { scanStatus.textContent = '✓ ' + text; onScan(text); };
       const onErr = () => {};
 
-      // Try a sequence of camera selectors, falling back on failure.
-      const attempts = [];
-      if (useFacingMode) {
-        attempts.push({ label: 'facingMode env hires', sel: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
-        attempts.push({ label: 'facingMode env', sel: { facingMode: 'environment' } });
-        attempts.push({ label: 'facingMode any', sel: { facingMode: { ideal: 'environment' } } });
-      }
-      if (currentCameraId) {
-        attempts.push({ label: 'deviceId ' + currentCameraId.slice(0, 8), sel: currentCameraId });
-      }
-      // Last resort: enumerate and try each camera
-      if (!useFacingMode || attempts.length === 0) {
-        if (cameras.length === 0) {
-          try { cameras = await Html5Qrcode.getCameras(); } catch (e) { console.warn('getCameras:', e); }
-        }
-        for (const c of cameras) {
-          attempts.push({ label: 'cam ' + (c.label || c.id.slice(0, 8)), sel: c.id });
-        }
+      // 3) Start with deviceId; if that fails, fall back to facingMode
+      try {
+        await scanner.start(currentCameraId, config, onSuccess, onErr);
+        console.log('[scanner] started by deviceId');
+      } catch (e1) {
+        console.warn('[scanner] deviceId failed:', e1);
+        try { if (scanner.isScanning) await scanner.stop(); } catch {}
+        await scanner.start({ facingMode: 'environment' }, config, onSuccess, onErr);
+        console.log('[scanner] started by facingMode');
       }
 
-      let started = false;
-      let lastErr = null;
-      for (const att of attempts) {
-        try {
-          console.log('[scanner] trying:', att.label, att.sel);
-          await scanner.start(att.sel, config, onSuccess, onErr);
-          console.log('[scanner] started with:', att.label);
-          started = true;
-          break;
-        } catch (e) {
-          console.warn('[scanner] failed:', att.label, e);
-          lastErr = e;
-          try { if (scanner.isScanning) await scanner.stop(); } catch {}
-        }
-      }
-      if (!started) {
-        throw lastErr || new Error('Nenhuma configuração de câmera funcionou');
-      }
       scanStatus.textContent = '📡 mire o código de barras';
 
-      // After camera is granted, populate cameras list (for flip)
-      if (cameras.length === 0) {
-        try { cameras = await Html5Qrcode.getCameras(); }
-        catch (e) { console.warn('getCameras after start failed:', e); }
-      }
-      btnFlip.style.display = cameras.length > 1 ? 'inline-block' : 'none';
-
-      // Try to apply continuous focus on the live track (iOS support varies)
+      // 4) Try to enable continuous focus (best-effort)
       try {
         const videoEl = document.querySelector('#reader video');
         const track = videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks()[0];
-        if (track) {
-          const caps = track.getCapabilities ? track.getCapabilities() : {};
-          if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        if (track && track.getCapabilities) {
+          const caps = track.getCapabilities();
+          if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
             await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
           }
-          if (caps.focusDistance) {
-            await track.applyConstraints({ advanced: [{ focusDistance: caps.focusDistance.min }] });
-          }
         }
-      } catch (e) { console.warn('focus tweak:', e); }
+      } catch (e) { console.warn('[scanner] focus tweak:', e); }
     } catch (e) {
-      console.error('startCamera failed:', e);
-      toast('Erro câmera: ' + (e.message || e.name || 'falha ao iniciar'), 'error');
+      console.error('[scanner] startCamera failed:', e);
+      toast('Erro câmera: ' + (e.message || e.name || 'falha'), 'error');
       await stopCamera();
     }
   }
@@ -1016,14 +1006,8 @@
 
   async function flipCamera() {
     if (cameras.length < 2) return;
-    // Switch to deviceId-based selection and cycle through cameras
-    useFacingMode = false;
-    if (!currentCameraId) {
-      currentCameraId = cameras[0].id;
-    } else {
-      const idx = cameras.findIndex(c => c.id === currentCameraId);
-      currentCameraId = cameras[(idx + 1) % cameras.length].id;
-    }
+    const idx = cameras.findIndex(c => c.id === currentCameraId);
+    currentCameraId = cameras[(idx + 1) % cameras.length].id;
     await stopCamera();
     await startCamera();
     const cam = cameras.find(c => c.id === currentCameraId);

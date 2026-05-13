@@ -482,7 +482,10 @@
     <button id="btn-export-eans" class="btn-warn btn-block" style="display: none; margin-top: 10px;">
       🏷 Exportar EANs vinculados (SKU;GTIN)
     </button>
-    <input type="file" id="file-catalog" accept=".csv,text/csv">
+    <button id="btn-clear-catalog" class="btn-ghost" style="display: none; margin-top: 6px; font-size: 12px; width: 100%; text-decoration: underline;">
+      Limpar catálogo
+    </button>
+    <input type="file" id="file-catalog" accept=".csv,text/csv" multiple>
   </section>
 
   <section>
@@ -656,6 +659,7 @@
       linkedCountEl.textContent = '';
       btnExportEans.style.display = 'none';
     }
+    $('btn-clear-catalog').style.display = catalog.length > 0 ? 'block' : 'none';
     if (catalogMeta) {
       const d = new Date(catalogMeta.importedAt);
       catalogMetaEl.textContent = `${catalogMeta.filename} • ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
@@ -941,53 +945,76 @@
     return -1;
   }
 
-  async function importCatalog(file) {
+  async function importCatalogs(files) {
+    if (!files || files.length === 0) return;
     try {
-      const text = await file.text();
-      const rows = parseCSV(text);
-      if (rows.length < 2) { toast('CSV vazio ou inválido', 'error'); return; }
-      const headers = rows[0];
-      const skuIdx = findColumn(headers, ['sku', 'codigosku', 'codigo']);
-      const nameIdx = findColumn(headers, ['descricao', 'nome', 'produto', 'descricaoproduto']);
-      const eanIdx = findColumn(headers, ['ean', 'gtin', 'gtinean', 'codigodebarras', 'codbarras', 'barcode']);
+      // Start with current catalog as merge base (preserves linked EANs & previous imports)
+      const merged = new Map();
+      for (const p of catalog) merged.set(p.sku, p);
 
-      if (skuIdx === -1) {
-        toast('Não achei coluna SKU/Código no CSV', 'error');
-        console.warn('Cabeçalhos:', headers);
-        return;
-      }
+      let totalNew = 0, totalUpdated = 0, totalWithEan = 0, totalRowsProcessed = 0;
+      const fileNames = [];
+      const failures = [];
 
-      // Preserve already-linked EANs from current session (so user doesn't lose work on re-import)
-      const linkedMap = new Map(); // sku -> ean
-      for (const p of catalog) {
-        if (p.ean && p.ean !== (p._origEan || '')) {
-          linkedMap.set(p.sku, p.ean);
+      for (const file of files) {
+        try {
+          const text = await file.text();
+          const rows = parseCSV(text);
+          if (rows.length < 2) { failures.push(`${file.name}: vazio`); continue; }
+          const headers = rows[0];
+          const skuIdx = findColumn(headers, ['sku', 'codigosku', 'codigo']);
+          const nameIdx = findColumn(headers, ['descricao', 'nome', 'produto', 'descricaoproduto']);
+          const eanIdx = findColumn(headers, ['ean', 'gtin', 'gtinean', 'codigodebarras', 'codbarras', 'barcode']);
+          if (skuIdx === -1) { failures.push(`${file.name}: sem coluna SKU`); console.warn(file.name, 'headers:', headers); continue; }
+
+          fileNames.push(file.name);
+          const seenInThisFile = new Set();
+          for (let r = 1; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row || row.length === 0) continue;
+            const sku = String(row[skuIdx] || '').trim();
+            if (!sku || seenInThisFile.has(sku)) continue;
+            seenInThisFile.add(sku);
+            const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
+            const ean = eanIdx !== -1 ? String(row[eanIdx] || '').trim().replace(/[^0-9]/g, '') : '';
+            totalRowsProcessed++;
+
+            if (merged.has(sku)) {
+              const existing = merged.get(sku);
+              if (name) existing.name = name;
+              if (ean && !existing.ean) {
+                existing.ean = ean;
+                existing._origEan = ean;
+                totalWithEan++;
+              } else if (ean && existing.ean === existing._origEan) {
+                // refresh canonical EAN from import (no user link to preserve)
+                existing._origEan = ean;
+                existing.ean = ean;
+              }
+              totalUpdated++;
+            } else {
+              merged.set(sku, { sku, name, ean, _origEan: ean });
+              if (ean) totalWithEan++;
+              totalNew++;
+            }
+          }
+        } catch (e) {
+          failures.push(`${file.name}: ${e.message}`);
         }
       }
 
-      const newCatalog = [];
-      const seenSkus = new Set();
-      let withEan = 0, totalSkus = 0;
-      for (let r = 1; r < rows.length; r++) {
-        const row = rows[r];
-        if (!row || row.length === 0) continue;
-        const sku = String(row[skuIdx] || '').trim();
-        if (!sku || seenSkus.has(sku)) continue;
-        seenSkus.add(sku);
-        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
-        let ean = eanIdx !== -1 ? String(row[eanIdx] || '').trim().replace(/[^0-9]/g, '') : '';
-        const origEan = ean;
-        // If we had linked this SKU before, preserve that linkage
-        if (!ean && linkedMap.has(sku)) ean = linkedMap.get(sku);
-        if (ean) withEan++;
-        totalSkus++;
-        newCatalog.push({ sku, name, ean, _origEan: origEan });
+      if (totalRowsProcessed === 0) {
+        toast(failures.length ? failures[0] : 'Nenhum produto válido', 'error');
+        return;
       }
 
-      if (totalSkus === 0) { toast('Nenhum produto válido no CSV', 'error'); return; }
-
-      catalog = newCatalog;
-      catalogMeta = { filename: file.name, importedAt: Date.now(), rowCount: totalSkus };
+      catalog = Array.from(merged.values());
+      catalogMeta = {
+        filename: fileNames.length === 1 ? fileNames[0] : `${fileNames.length} arquivos`,
+        files: fileNames,
+        importedAt: Date.now(),
+        rowCount: catalog.length
+      };
       saveCatalog();
       rebuildIndexes();
 
@@ -1004,12 +1031,35 @@
       if (backfilled > 0) saveItems();
 
       render();
-      const withEanMsg = withEan > 0 ? ` (${withEan} com EAN)` : ' (todos sem EAN — vincule durante a contagem)';
-      toast(`${totalSkus} produtos importados${withEanMsg}${backfilled ? ` • ${backfilled} preenchidos` : ''}`);
+      const parts = [];
+      if (totalNew > 0) parts.push(`+${totalNew} novos`);
+      if (totalUpdated > 0) parts.push(`${totalUpdated} atualizados`);
+      parts.push(`total ${catalog.length}`);
+      if (backfilled > 0) parts.push(`${backfilled} itens preenchidos`);
+      let msg = parts.join(' • ');
+      if (failures.length > 0) {
+        msg += ` • ⚠ ${failures.length} arquivo(s) falharam`;
+        console.warn('Falhas:', failures);
+      }
+      toast(msg);
     } catch (e) {
       console.error(e);
-      toast('Erro ao ler CSV: ' + e.message, 'error');
+      toast('Erro ao ler CSV(s): ' + e.message, 'error');
     }
+  }
+
+  function clearCatalog() {
+    const linkedCount = countNewlyLinked();
+    let msg = `Limpar catálogo (${catalog.length} produtos)?`;
+    if (linkedCount > 0) msg += `\n\n⚠ Você vai PERDER ${linkedCount} vinculação(ões) EAN→SKU feitas durante a contagem. Exporte primeiro se quiser preservar.`;
+    if (!confirm(msg)) return;
+    catalog = [];
+    catalogMeta = null;
+    try { localStorage.removeItem(LS_CATALOG_META); } catch {}
+    saveCatalog();
+    rebuildIndexes();
+    render();
+    toast('Catálogo limpo');
   }
 
   function csvEscape(s) {
@@ -1073,11 +1123,12 @@
 
   btnImport.addEventListener('click', () => fileCatalog.click());
   fileCatalog.addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (f) importCatalog(f);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) importCatalogs(files);
     fileCatalog.value = '';
   });
   btnExportEans.addEventListener('click', exportEans);
+  $('btn-clear-catalog').addEventListener('click', clearCatalog);
 
   // List interactions
   itemList.addEventListener('click', (e) => {

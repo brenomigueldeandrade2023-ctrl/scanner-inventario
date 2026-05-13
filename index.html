@@ -3,41 +3,133 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0f172a">
+<meta name="theme-color" content="#0a0805">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Scanner Inventário</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📦%3C/text%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-title" content="Brenão">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="icon" type="image/png" href="logo.png">
+<title>Scanner do Brenão · Vânia Importados</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
 <style>
+  :root {
+    --bg: #0a0805;
+    --surface: #1a1410;
+    --surface-2: #241c14;
+    --surface-3: #2e251a;
+    --border: #3a2e22;
+    --border-strong: #5a4a36;
+    --gold: #d4af6a;
+    --gold-2: #e6c084;
+    --gold-dark: #a8854f;
+    --gold-glow: rgba(212, 175, 106, 0.15);
+    --text: #f5ede0;
+    --text-muted: #b8a892;
+    --text-dim: #6b5d4d;
+    --success: #6ba370;
+    --success-bg: #1a2a1c;
+    --warn: #e8a04a;
+    --warn-bg: #2a1e0c;
+    --warn-border: #c08030;
+    --danger: #d24a3e;
+    --danger-bg: #2a1410;
+  }
+
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
   body {
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(at 20% 0%, rgba(212, 175, 106, 0.06) 0px, transparent 50%),
+      radial-gradient(at 80% 100%, rgba(212, 175, 106, 0.04) 0px, transparent 50%);
+    color: var(--text);
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
     overscroll-behavior: none;
+    font-size: 15px;
   }
+
   header {
-    background: #1e293b;
-    padding: 12px 16px;
-    padding-top: calc(12px + env(safe-area-inset-top));
+    background: linear-gradient(180deg, #15100a 0%, #0a0805 100%);
+    padding: 14px 16px;
+    padding-top: calc(14px + env(safe-area-inset-top));
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 10;
+    gap: 12px;
   }
-  header h1 { margin: 0; font-size: 17px; font-weight: 600; }
-  header .stats { font-size: 13px; color: #94a3b8; text-align: right; }
-  main { flex: 1; padding: 12px; padding-bottom: 100px; max-width: 600px; margin: 0 auto; width: 100%; }
-  section { background: #1e293b; border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid #334155; }
-  section h2 { margin: 0 0 10px 0; font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .brand img {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 8px var(--gold-glow));
+  }
+  .brand-text { min-width: 0; }
+  .brand-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.03em;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .brand-sub {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-top: 1px;
+  }
+  .stats { font-size: 12px; color: var(--text-muted); text-align: right; flex-shrink: 0; white-space: nowrap; }
+  .stats strong { color: var(--gold); font-weight: 600; }
+
+  main { flex: 1; padding: 14px; padding-bottom: 100px; max-width: 600px; margin: 0 auto; width: 100%; }
+
+  section {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    position: relative;
+  }
+  section h2 {
+    margin: 0 0 12px 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  section h2::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--gold);
+  }
 
   button {
     font-family: inherit;
@@ -47,29 +139,85 @@
     padding: 12px 16px;
     cursor: pointer;
     font-weight: 600;
-    transition: opacity 0.15s, transform 0.05s;
+    transition: opacity 0.15s, transform 0.05s, background 0.15s;
     min-height: 48px;
+    color: var(--bg);
   }
   button:active { transform: scale(0.97); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-primary { background: #16a34a; color: white; }
-  .btn-secondary { background: #334155; color: #e2e8f0; }
-  .btn-danger { background: #dc2626; color: white; }
-  .btn-warn { background: #d97706; color: white; }
-  .btn-ghost { background: transparent; color: #94a3b8; padding: 8px 12px; min-height: auto; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    color: #1a0f00;
+    box-shadow: 0 2px 8px var(--gold-glow);
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, var(--gold-2) 0%, var(--gold) 100%); }
+  .btn-secondary {
+    background: var(--surface-3);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+  }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-warn {
+    background: var(--warn);
+    color: #1a0f00;
+  }
+  .btn-undo {
+    background: transparent;
+    color: var(--warn);
+    border: 1px solid var(--warn);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    min-height: auto;
+  }
   .btn-block { width: 100%; }
   .btn-row { display: flex; gap: 8px; }
   .btn-row > button { flex: 1; }
+
+  /* Session name input */
+  .session-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .session-row label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    flex-shrink: 0;
+  }
+  .session-row input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--gold);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    padding: 4px 0;
+    min-width: 0;
+  }
+  .session-row input:focus { outline: none; }
+  .session-row input::placeholder { color: var(--text-dim); font-style: italic; }
 
   /* Scanner */
   #video-wrap {
     position: relative;
     background: #000;
-    border-radius: 10px;
+    border-radius: 12px;
     overflow: hidden;
     aspect-ratio: 4 / 3;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     display: none;
+    border: 1px solid var(--border-strong);
   }
   #video-wrap.active { display: block; }
   #reader { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -92,6 +240,7 @@
   #reader__scan_region img { display: none !important; }
   #reader__dashboard { display: none !important; }
   #reader__filescan_input { display: none !important; }
+
   #scan-overlay {
     position: absolute;
     inset: 0;
@@ -103,26 +252,71 @@
   }
   #scan-box {
     width: 80%;
-    height: 30%;
-    border: 2px solid #16a34a;
+    height: 32%;
+    border: 2px solid var(--gold);
     border-radius: 8px;
-    box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 20px var(--gold-glow);
+    position: relative;
   }
-  #scan-overlay.flash #scan-box { border-color: #fbbf24; animation: flash 0.4s; }
-  @keyframes flash { 0% { background: rgba(251,191,36,0.4); } 100% { background: transparent; } }
+  #scan-box::before, #scan-box::after,
+  #scan-box > .corner-tl, #scan-box > .corner-tr,
+  #scan-box > .corner-bl, #scan-box > .corner-br {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--gold-2);
+  }
+  #scan-box::before { top: -2px; left: -2px; border-right: none; border-bottom: none; border-top-left-radius: 8px; }
+  #scan-box::after { top: -2px; right: -2px; border-left: none; border-bottom: none; border-top-right-radius: 8px; }
+  #scan-box > .corner-bl { bottom: -2px; left: -2px; border-right: none; border-top: none; border-bottom-left-radius: 8px; }
+  #scan-box > .corner-br { bottom: -2px; right: -2px; border-left: none; border-top: none; border-bottom-right-radius: 8px; }
+
+  #scan-overlay.flash #scan-box { border-color: var(--success); animation: flash 0.4s; }
+  @keyframes flash { 0% { background: rgba(107, 163, 112, 0.4); } 100% { background: transparent; } }
+
   #scan-status {
     position: absolute;
-    bottom: 8px;
-    left: 8px;
-    background: rgba(0,0,0,0.6);
-    color: #86efac;
-    padding: 4px 8px;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.7);
+    color: var(--gold-2);
+    padding: 5px 10px;
     border-radius: 6px;
     font-size: 11px;
     font-family: ui-monospace, monospace;
     z-index: 6;
     pointer-events: none;
+    border: 1px solid var(--border);
+    max-width: calc(100% - 20px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+
+  /* Camera control buttons overlay */
+  .cam-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .cam-controls button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    background: rgba(0,0,0,0.6);
+    color: var(--gold-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    font-size: 18px;
+  }
+  .cam-controls button.active { background: var(--gold); color: #1a0f00; border-color: var(--gold-2); }
+  .cam-controls button[hidden] { display: none; }
 
   .manual-entry { display: flex; gap: 8px; }
   .manual-entry input {
@@ -130,78 +324,94 @@
     font-size: 16px;
     padding: 12px;
     border-radius: 10px;
-    border: 1px solid #475569;
-    background: #0f172a;
-    color: #e2e8f0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
     font-family: ui-monospace, "SF Mono", monospace;
     min-width: 0;
   }
-  .manual-entry input:focus { outline: none; border-color: #16a34a; }
+  .manual-entry input:focus { outline: none; border-color: var(--gold); }
   .manual-entry button { padding: 12px 16px; }
 
   /* Last scanned card */
   .last-scan {
-    background: #064e3b;
-    border: 1px solid #16a34a;
-    border-radius: 10px;
-    padding: 12px;
-    margin-top: 10px;
+    background: linear-gradient(135deg, var(--success-bg) 0%, #1a2418 100%);
+    border: 1px solid var(--success);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 12px;
     display: none;
+    box-shadow: 0 4px 12px rgba(107, 163, 112, 0.1);
   }
   .last-scan.show { display: block; animation: slideIn 0.2s; }
-  .last-scan.unlinked { background: #422006; border-color: #d97706; }
-  @keyframes slideIn { from { transform: translateY(-4px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  .ls-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; }
-  .ls-meta { font-size: 11px; color: #86efac; font-family: ui-monospace, monospace; flex: 1; min-width: 0; word-break: break-all; }
-  .last-scan.unlinked .ls-meta { color: #fbbf24; }
-  .ls-close {
-    background: transparent;
-    color: #86efac;
-    border: none;
-    padding: 4px 8px;
-    font-size: 16px;
-    min-height: auto;
-    cursor: pointer;
-    flex: 0 0 auto;
+  .last-scan.unlinked {
+    background: linear-gradient(135deg, var(--warn-bg) 0%, #2a1e0c 100%);
+    border-color: var(--warn-border);
+    box-shadow: 0 4px 12px rgba(232, 160, 74, 0.1);
   }
-  .last-scan.unlinked .ls-close { color: #fbbf24; }
+  @keyframes slideIn { from { transform: translateY(-4px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-  /* Link picker (for unknown EAN) */
+  .ls-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+  .ls-meta {
+    font-size: 11px;
+    color: var(--success);
+    font-family: ui-monospace, monospace;
+    flex: 1;
+    min-width: 0;
+    word-break: break-all;
+    line-height: 1.4;
+  }
+  .last-scan.unlinked .ls-meta { color: var(--warn); }
+  .ls-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .ls-actions button {
+    background: transparent;
+    color: var(--success);
+    border: 1px solid currentColor;
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    min-height: 28px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .last-scan.unlinked .ls-actions button { color: var(--warn); }
+  .ls-close {
+    background: transparent !important;
+    color: var(--text-dim) !important;
+    border: none !important;
+    font-size: 16px !important;
+    padding: 4px 8px !important;
+    min-height: auto !important;
+  }
+
   .ls-link {
-    background: rgba(15, 23, 42, 0.5);
-    border: 1px dashed #d97706;
-    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px dashed var(--warn-border);
+    border-radius: 10px;
     padding: 10px;
     margin-bottom: 10px;
     display: none;
   }
   .ls-link.show { display: block; }
-  .ls-link-title {
-    font-size: 12px;
-    color: #fbbf24;
-    font-weight: 600;
-    margin-bottom: 8px;
-  }
-  .ls-link-search-wrap {
-    position: relative;
-    margin-bottom: 6px;
-  }
+  .ls-link-title { font-size: 11px; color: var(--warn); font-weight: 700; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .ls-link-search-wrap { position: relative; margin-bottom: 6px; }
   .ls-link-search-wrap input {
     width: 100%;
     padding: 10px 12px;
     border-radius: 8px;
-    border: 1px solid #475569;
-    background: #0f172a;
-    color: white;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
     font-size: 15px;
     font-family: inherit;
   }
-  .ls-link-search-wrap input:focus { outline: none; border-color: #d97706; }
+  .ls-link-search-wrap input:focus { outline: none; border-color: var(--warn-border); }
   .ls-link-results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
   .ls-link-result {
-    background: #0f172a;
-    border: 1px solid #334155;
-    color: #e2e8f0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
     padding: 8px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -213,104 +423,104 @@
     width: 100%;
     line-height: 1.3;
   }
-  .ls-link-result:active { background: #1e293b; }
-  .ls-link-result .r-sku { color: #16a34a; font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; display: block; }
-  .ls-link-result .r-name { color: #e2e8f0; display: block; }
+  .ls-link-result:active { background: var(--surface-2); }
+  .ls-link-result .r-sku { color: var(--gold); font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; display: block; }
+  .ls-link-result .r-name { color: var(--text); display: block; }
   .ls-link-result.has-ean { opacity: 0.5; }
-  .ls-link-result.has-ean .r-sku::after { content: ' • já vinculado'; color: #fbbf24; font-weight: 400; }
-  .ls-link-empty { color: #64748b; font-size: 12px; text-align: center; padding: 8px; font-style: italic; }
+  .ls-link-result.has-ean .r-sku::after { content: ' • já vinculado'; color: var(--warn); font-weight: 400; }
+  .ls-link-empty { color: var(--text-dim); font-size: 12px; text-align: center; padding: 8px; font-style: italic; }
 
   /* Editable fields in card */
   .ls-field { margin-bottom: 8px; }
   .ls-field:last-child { margin-bottom: 0; }
   .ls-field label {
     display: block;
-    font-size: 10px;
-    color: #86efac;
+    font-size: 9.5px;
+    color: var(--success);
     margin-bottom: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
+    letter-spacing: 0.12em;
+    font-weight: 700;
   }
-  .last-scan.unlinked .ls-field label { color: #fbbf24; }
+  .last-scan.unlinked .ls-field label { color: var(--warn); }
   .ls-field input {
     width: 100%;
     padding: 10px 12px;
     border-radius: 8px;
-    border: 1px solid #16a34a;
-    background: rgba(15,23,42,0.6);
-    color: white;
+    border: 1px solid var(--success);
+    background: rgba(0,0,0,0.4);
+    color: var(--text);
     font-size: 16px;
     font-family: inherit;
   }
-  .last-scan.unlinked .ls-field input { border-color: #d97706; }
-  .ls-field input:focus {
-    outline: none;
-    border-color: #22c55e;
-    background: #0f172a;
-    box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
-  }
+  .last-scan.unlinked .ls-field input { border-color: var(--warn-border); }
+  .ls-field input:focus { outline: none; background: var(--bg); box-shadow: 0 0 0 3px var(--gold-glow); }
   .ls-field.qty input {
     font-family: ui-monospace, "SF Mono", monospace;
     text-align: center;
     font-size: 24px;
     font-weight: 700;
     letter-spacing: 0.05em;
+    color: var(--gold);
   }
   .ls-row { display: flex; gap: 10px; align-items: flex-end; }
   .ls-row > .ls-field { flex: 1; }
-  .ls-qty-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .ls-qty-actions { display: flex; flex-direction: column; gap: 4px; }
   .ls-qty-actions button {
     width: 44px;
     height: 30px;
     min-height: 30px;
     padding: 0;
-    background: #15803d;
-    color: white;
+    background: var(--gold-dark);
+    color: var(--text);
     border-radius: 6px;
     font-size: 16px;
     font-weight: 700;
   }
-  .last-scan.unlinked .ls-qty-actions button { background: #b45309; }
 
   /* Catalog */
-  .catalog-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-  }
-  .catalog-row .info { font-size: 13px; color: #94a3b8; flex: 1; min-width: 0; }
-  .catalog-row .info strong { color: #e2e8f0; }
-  .linked-count { color: #16a34a !important; font-weight: 600; }
+  .catalog-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .catalog-row .info { font-size: 13px; color: var(--text-muted); flex: 1; min-width: 0; }
+  .catalog-row .info strong { color: var(--gold); }
+  .linked-count { color: var(--success) !important; font-weight: 600; }
 
   /* List */
-  .empty-state { text-align: center; padding: 30px 10px; color: #64748b; font-size: 14px; }
+  .list-search {
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .list-search:focus { outline: none; border-color: var(--gold); }
+  .list-search::placeholder { color: var(--text-dim); }
+  .empty-state { text-align: center; padding: 30px 10px; color: var(--text-dim); font-size: 14px; font-style: italic; }
+
   .list-item {
-    background: #0f172a;
+    background: var(--bg);
     border-radius: 10px;
     padding: 10px 12px;
     margin-bottom: 8px;
     display: flex;
     gap: 10px;
     align-items: center;
-    border: 1px solid #1e293b;
+    border: 1px solid var(--border);
   }
-  .list-item.pulse { animation: pulse 0.5s; }
+  .list-item.pulse { animation: pulse 0.6s; }
   @keyframes pulse {
-    0% { background: #064e3b; border-color: #16a34a; }
-    100% { background: #0f172a; border-color: #1e293b; }
+    0% { background: var(--success-bg); border-color: var(--success); }
+    100% { background: var(--bg); border-color: var(--border); }
   }
-  .list-item.no-sku { border-left: 3px solid #f59e0b; }
+  .list-item.no-sku { border-left: 3px solid var(--warn); }
   .list-item .info { flex: 1; min-width: 0; }
   .list-item .name {
     font-size: 14px;
     font-weight: 500;
-    color: #e2e8f0;
+    color: var(--text);
     border: 1px solid transparent;
     background: transparent;
     padding: 4px 6px;
@@ -324,36 +534,35 @@
   }
   .list-item .name:focus {
     outline: none;
-    border-color: #16a34a;
-    background: #0f172a;
+    border-color: var(--gold);
+    background: var(--surface);
     white-space: normal;
     text-overflow: clip;
   }
-  .list-item .name.unknown { color: #fbbf24; font-style: italic; }
-  .list-item .name.unknown::placeholder { color: #fbbf24; font-style: italic; opacity: 0.8; }
-  .list-item .meta { font-size: 11px; color: #64748b; font-family: ui-monospace, monospace; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .list-item .name.unknown { color: var(--warn); font-style: italic; }
+  .list-item .name.unknown::placeholder { color: var(--warn); font-style: italic; opacity: 0.8; }
+  .list-item .meta { font-size: 11px; color: var(--text-dim); font-family: ui-monospace, monospace; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .list-item .badge-unlinked {
-    background: #422006;
-    color: #fbbf24;
+    background: var(--warn-bg);
+    color: var(--warn);
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 10px;
     font-weight: 700;
     cursor: pointer;
-    border: 1px solid #d97706;
+    border: 1px solid var(--warn-border);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
-  .list-item .qty-ctrl {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
+  .list-item .qty-ctrl { display: flex; align-items: center; gap: 4px; }
   .list-item .qty-ctrl button {
     width: 32px;
     height: 32px;
     min-height: 32px;
     padding: 0;
-    background: #334155;
-    color: white;
+    background: var(--surface-3);
+    color: var(--gold);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     font-size: 18px;
     font-weight: 700;
@@ -362,22 +571,22 @@
     width: 50px;
     text-align: center;
     font-size: 15px;
-    font-weight: 600;
-    border: 1px solid #475569;
-    background: #0f172a;
-    color: white;
+    font-weight: 700;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--gold);
     border-radius: 6px;
     padding: 4px;
     font-family: ui-monospace, monospace;
   }
-  .list-item .qty-ctrl input:focus { outline: none; border-color: #16a34a; }
+  .list-item .qty-ctrl input:focus { outline: none; border-color: var(--gold); }
   .list-item .remove {
     width: 32px;
     height: 32px;
     min-height: 32px;
     padding: 0;
     background: transparent;
-    color: #ef4444;
+    color: var(--danger);
     font-size: 18px;
   }
 
@@ -387,8 +596,8 @@
     bottom: 0;
     left: 0;
     right: 0;
-    background: #1e293b;
-    border-top: 1px solid #334155;
+    background: linear-gradient(180deg, #15100a 0%, #0a0805 100%);
+    border-top: 1px solid var(--border-strong);
     padding: 10px 12px;
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
     display: flex;
@@ -403,64 +612,93 @@
     top: 70px;
     left: 50%;
     transform: translateX(-50%);
-    background: #16a34a;
-    color: white;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    color: #1a0f00;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
     z-index: 100;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s, transform 0.2s;
     max-width: 90%;
     text-align: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    border: 1px solid var(--gold-2);
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-  #toast.error { background: #dc2626; }
-  #toast.warn { background: #d97706; }
+  #toast.error { background: var(--danger); color: white; border-color: var(--danger); }
+  #toast.warn { background: var(--warn); color: #1a0f00; border-color: var(--warn-border); }
 
   input[type="file"] { display: none; }
 
   .warning {
-    background: #422006;
-    border: 1px solid #d97706;
-    color: #fbbf24;
-    padding: 10px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-  .info-box {
-    background: #0c4a6e;
-    border: 1px solid #0ea5e9;
-    color: #bae6fd;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    color: var(--warn);
     padding: 10px 12px;
     border-radius: 8px;
     font-size: 13px;
     margin-bottom: 10px;
   }
 
+  /* Footer */
+  .brand-footer {
+    text-align: center;
+    padding: 20px 0 16px 0;
+    color: var(--text-dim);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-style: italic;
+  }
+  .brand-footer-mark {
+    display: inline-block;
+    padding: 0 8px;
+    color: var(--gold);
+  }
+
   @media (min-width: 600px) {
     main { padding: 16px; }
-    section { padding: 16px; }
+    section { padding: 18px; }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>📦 Scanner <span style="font-size:10px; color:#64748b; font-weight:400; vertical-align: middle;">v8</span></h1>
-  <div class="stats" id="stats">0 itens</div>
+  <div class="brand">
+    <img src="logo.png" alt="Vânia Importados">
+    <div class="brand-text">
+      <div class="brand-title">Scanner do Brenão</div>
+      <div class="brand-sub" id="brand-sub">Vânia Importados · v9</div>
+    </div>
+  </div>
+  <div class="stats" id="stats"><strong>0</strong> itens</div>
 </header>
 
 <main>
 
   <section>
+    <h2>Sessão</h2>
+    <div class="session-row">
+      <label>Nome:</label>
+      <input id="session-name" type="text" placeholder="Ex: Remessa 15-05, Conferência semanal..." autocomplete="off">
+    </div>
     <h2>Scanner</h2>
     <div id="video-wrap">
       <div id="reader"></div>
-      <div id="scan-overlay"><div id="scan-box"></div></div>
+      <div id="scan-overlay">
+        <div id="scan-box">
+          <div class="corner-bl"></div>
+          <div class="corner-br"></div>
+        </div>
+      </div>
+      <div class="cam-controls">
+        <button id="btn-torch" hidden title="Lanterna">🔦</button>
+      </div>
       <div id="scan-status">📡 detectando...</div>
     </div>
     <div class="btn-row" style="margin-bottom: 10px;">
@@ -475,7 +713,10 @@
     <div id="last-scan" class="last-scan">
       <div class="ls-header">
         <div class="ls-meta" id="ls-meta">—</div>
-        <button class="ls-close" id="ls-close" title="Fechar">✕</button>
+        <div class="ls-actions">
+          <button id="ls-undo" title="Desfazer último bipe">⤺ Desfazer</button>
+          <button id="ls-close" class="ls-close" title="Fechar">✕</button>
+        </div>
       </div>
 
       <div id="ls-link" class="ls-link">
@@ -509,7 +750,7 @@
       <div class="info">
         <strong id="catalog-count">0</strong> produtos
         <span id="linked-count" class="linked-count"></span>
-        <div id="catalog-meta" style="font-size: 11px; color: #64748b; margin-top: 2px;"></div>
+        <div id="catalog-meta" style="font-size: 11px; color: var(--text-dim); margin-top: 2px;"></div>
       </div>
       <button id="btn-import-catalog" class="btn-secondary">Importar CSV</button>
     </div>
@@ -527,9 +768,14 @@
 
   <section>
     <h2>Itens escaneados</h2>
+    <input type="text" id="list-search" class="list-search" placeholder="🔍 Buscar por nome, SKU ou EAN..." autocomplete="off">
     <div id="warn-no-sku" class="warning" style="display: none;"></div>
     <div id="item-list"></div>
   </section>
+
+  <div class="brand-footer">
+    Vânia <span class="brand-footer-mark">·</span> Importados <span class="brand-footer-mark">·</span> Perfumaria
+  </div>
 
 </main>
 
@@ -550,6 +796,7 @@
   const LS_CATALOG = 'inv_catalog_v2';
   const LS_CATALOG_OLD = 'inv_catalog_v1';
   const LS_CATALOG_META = 'inv_catalog_meta_v1';
+  const LS_SESSION = 'inv_session_name_v1';
   const SCAN_DEBOUNCE_MS = 1500;
   const SEARCH_LIMIT = 6;
 
@@ -559,6 +806,7 @@
   let eanIndex = new Map();
   let skuIndex = new Map();
   let catalogMeta = loadJSON(LS_CATALOG_META, null);
+  let sessionName = localStorage.getItem(LS_SESSION) || '';
   rebuildIndexes();
 
   let scanner = null;
@@ -567,18 +815,25 @@
   let lastScannedEan = null;
   let lastScannedAt = 0;
   let activeEan = null;
+  let lastUndoableScan = null; // {ean, wasNew, qtyBefore}
+  let listFilter = '';
+  let torchOn = false;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
   const btnCamera = $('btn-camera');
   const btnFlip = $('btn-flip');
+  const btnTorch = $('btn-torch');
   const videoWrap = $('video-wrap');
   const overlay = $('scan-overlay');
   const scanStatus = $('scan-status');
   const inputManual = $('manual-ean');
   const btnManualAdd = $('btn-manual-add');
+  const sessionInput = $('session-name');
+  const brandSub = $('brand-sub');
   const lastScanBox = $('last-scan');
   const lsMeta = $('ls-meta');
+  const lsUndo = $('ls-undo');
   const lsClose = $('ls-close');
   const lsLink = $('ls-link');
   const lsLinkSearch = $('ls-link-search');
@@ -594,6 +849,7 @@
   const btnExportEans = $('btn-export-eans');
   const fileCatalog = $('file-catalog');
   const itemList = $('item-list');
+  const listSearchEl = $('list-search');
   const warnNoSku = $('warn-no-sku');
   const btnExport = $('btn-export');
   const btnClear = $('btn-clear');
@@ -608,7 +864,6 @@
   function loadCatalog() {
     const raw = loadJSON(LS_CATALOG, null);
     if (Array.isArray(raw)) return raw;
-    // Migrate old format: {ean: {sku, name}}
     const old = loadJSON(LS_CATALOG_OLD, null);
     if (old && typeof old === 'object' && !Array.isArray(old)) {
       const arr = Object.entries(old).map(([ean, info]) => ({
@@ -638,12 +893,9 @@
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
   function normalizeKey(s) {
-    return String(s || '')
-      .toLowerCase()
+    return String(s || '').toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9 ]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+      .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   }
   function toast(msg, type = '') {
     toastEl.textContent = msg;
@@ -651,6 +903,9 @@
     toastEl.classList.add('show');
     clearTimeout(toast._t);
     toast._t = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  }
+  function slugify(s) {
+    return normalizeKey(s).replace(/\s+/g, '-').slice(0, 40);
   }
 
   let audioCtx = null;
@@ -660,23 +915,23 @@
       if (audioCtx.state === 'suspended') await audioCtx.resume();
     } catch (e) { console.warn('audio init:', e); }
   }
-  function beep() {
+  function beep(freq = 880) {
     if (!audioCtx) return;
     try {
       if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.type = 'sine';
-      o.frequency.value = 880;
+      o.frequency.value = freq;
       g.gain.value = 0.2;
       o.connect(g).connect(audioCtx.destination);
       o.start();
       o.stop(audioCtx.currentTime + 0.1);
     } catch (e) { console.warn('beep:', e); }
   }
-  function feedback() {
-    try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
-    beep();
+  function feedback(unlinked) {
+    try { if (navigator.vibrate) navigator.vibrate(unlinked ? [40, 60, 40] : 60); } catch {}
+    beep(unlinked ? 660 : 880);
     overlay.classList.add('flash');
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
@@ -687,16 +942,17 @@
 
   // ---------- Render ----------
   function render() {
-    // Stats
     const totalItems = items.length;
     const totalUnits = items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
-    stats.textContent = `${totalItems} ${totalItems === 1 ? 'item' : 'itens'} • ${totalUnits} un`;
+    stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
-    // Catalog
+    // Brand sub: show session name if set
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v9';
+
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
     if (newlyLinked > 0) {
-      linkedCountEl.textContent = ` • +${newlyLinked} EANs vinculados`;
+      linkedCountEl.textContent = ` · +${newlyLinked} EANs vinculados`;
       btnExportEans.style.display = 'block';
       btnExportEans.textContent = `🏷 Exportar ${newlyLinked} EAN${newlyLinked > 1 ? 's' : ''} vinculado${newlyLinked > 1 ? 's' : ''} (SKU;GTIN)`;
     } else {
@@ -706,17 +962,16 @@
     $('btn-clear-catalog').style.display = catalog.length > 0 ? 'block' : 'none';
     if (catalogMeta) {
       const d = new Date(catalogMeta.importedAt);
-      catalogMetaEl.textContent = `${catalogMeta.filename} • ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+      catalogMetaEl.textContent = `${catalogMeta.filename} · ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
     } else {
       catalogMetaEl.textContent = 'Importe o CSV de produtos do OLIST';
     }
 
-    // No-SKU warning + export-unlinked button
     const noSkuCount = items.filter(i => !i.sku).length;
     const btnExportUnlinked = $('btn-export-unlinked');
     if (noSkuCount > 0) {
       warnNoSku.style.display = 'block';
-      warnNoSku.textContent = `⚠ ${noSkuCount} ${noSkuCount === 1 ? 'item não vinculado' : 'itens não vinculados'}. Toque em "vincular" pra associar ao OLIST ou use "Exportar não vinculados" pra cadastrar manualmente depois.`;
+      warnNoSku.textContent = `⚠ ${noSkuCount} ${noSkuCount === 1 ? 'item não vinculado' : 'itens não vinculados'}. Toque em "vincular" pra associar ao OLIST ou use o botão acima pra exportar e cadastrar manualmente depois.`;
       btnExportUnlinked.style.display = 'block';
       btnExportUnlinked.textContent = `📋 Exportar ${noSkuCount} produto${noSkuCount > 1 ? 's' : ''} não vinculado${noSkuCount > 1 ? 's' : ''} (EAN;Nome;Qtd)`;
     } else {
@@ -724,20 +979,29 @@
       btnExportUnlinked.style.display = 'none';
     }
 
-    // List
+    // List with filter
+    const fq = normalizeKey(listFilter);
+    const filtered = !fq ? items : items.filter(it => {
+      const txt = normalizeKey((it.name || '') + ' ' + (it.sku || '') + ' ' + (it.ean || ''));
+      return fq.split(' ').every(t => txt.includes(t));
+    });
+
     if (items.length === 0) {
       itemList.innerHTML = '<div class="empty-state">Nenhum item escaneado ainda</div>';
+    } else if (filtered.length === 0) {
+      itemList.innerHTML = `<div class="empty-state">Nenhum item bate com "${escapeHtml(listFilter)}"</div>`;
     } else {
       itemList.innerHTML = '';
-      [...items].reverse().forEach((it, revIdx) => {
-        const idx = items.length - 1 - revIdx;
+      // Render filtered, newest first
+      const indexed = filtered.map(it => ({ it, idx: items.indexOf(it) })).reverse();
+      for (const { it, idx } of indexed) {
         const div = document.createElement('div');
         div.className = 'list-item' + (it.sku ? '' : ' no-sku');
         div.dataset.idx = idx;
         const nameHtml = `<input type="text" class="name ${it.name ? '' : 'unknown'}" data-act="name" value="${escapeHtml(it.name)}" placeholder="Sem nome — toque pra digitar" autocomplete="off" autocapitalize="words">`;
         const linkBadge = (!it.sku && catalog.length > 0)
           ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
-        const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} • ` : '';
+        const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} · ` : '';
         div.innerHTML = `
           <div class="info">
             ${nameHtml}
@@ -751,7 +1015,7 @@
           <button class="remove" data-act="remove">✕</button>
         `;
         itemList.appendChild(div);
-      });
+      }
     }
   }
 
@@ -770,6 +1034,13 @@
     const prod = eanIndex.get(ean);
     const existing = items.find(i => i.ean === ean);
 
+    // Track for undo
+    lastUndoableScan = {
+      ean,
+      wasNew: !existing,
+      qtyBefore: existing ? existing.qty : 0
+    };
+
     if (existing) {
       existing.qty = (Number(existing.qty) || 0) + 1;
       if (prod) {
@@ -786,7 +1057,7 @@
     }
     saveItems();
 
-    feedback();
+    feedback(!prod);
     render();
     const isNewUnknown = !existing && !prod;
     showLastScan(ean, isNewUnknown);
@@ -795,6 +1066,26 @@
       const el = itemList.querySelector(`[data-idx="${items.findIndex(i => i.ean === ean)}"]`);
       if (el) el.classList.add('pulse');
     }, 10);
+  }
+
+  function undoLastScan() {
+    if (!lastUndoableScan) { toast('Nada pra desfazer', 'warn'); return; }
+    const { ean, wasNew, qtyBefore } = lastUndoableScan;
+    const idx = items.findIndex(i => i.ean === ean);
+    if (idx === -1) { toast('Item já não está na lista', 'warn'); lastUndoableScan = null; return; }
+    if (wasNew) {
+      items.splice(idx, 1);
+      toast('Bipe desfeito (item removido)');
+    } else {
+      items[idx].qty = qtyBefore;
+      toast(`Bipe desfeito (qty: ${qtyBefore})`);
+    }
+    saveItems();
+    lastUndoableScan = null;
+    lastScannedEan = null;
+    lastScanBox.classList.remove('show');
+    activeEan = null;
+    render();
   }
 
   function showLastScan(ean, focusFirst) {
@@ -806,28 +1097,21 @@
     const unlinked = !item.sku && catalog.length > 0;
     lastScanBox.classList.toggle('unlinked', unlinked);
 
-    lsMeta.textContent = item.sku
-      ? `✓ SKU: ${item.sku} • EAN: ${ean}`
-      : `EAN: ${ean}${catalog.length > 0 ? ' • sem SKU OLIST' : ''}`;
+    lsMeta.innerHTML = item.sku
+      ? `✓ <strong>${escapeHtml(item.sku)}</strong> · EAN: ${escapeHtml(ean)}`
+      : `EAN: ${escapeHtml(ean)}${catalog.length > 0 ? ' · sem SKU OLIST' : ''}`;
 
-    // Link picker visibility
     if (unlinked) {
       lsLink.classList.add('show');
       lsLinkSearch.value = '';
       renderSearchResults('');
-      if (focusFirst) {
-        setTimeout(() => lsLinkSearch.focus(), 80);
-      }
+      if (focusFirst) setTimeout(() => lsLinkSearch.focus(), 80);
     } else {
       lsLink.classList.remove('show');
     }
 
-    if (document.activeElement !== lsNameInput) {
-      lsNameInput.value = item.name || '';
-    }
-    if (document.activeElement !== lsQtyInput) {
-      lsQtyInput.value = item.qty;
-    }
+    if (document.activeElement !== lsNameInput) lsNameInput.value = item.name || '';
+    if (document.activeElement !== lsQtyInput) lsQtyInput.value = item.qty;
 
     if (focusFirst && !unlinked && !item.name) {
       setTimeout(() => { lsNameInput.focus(); lsNameInput.select(); }, 80);
@@ -878,9 +1162,7 @@
   function linkEanToSku(ean, sku) {
     const p = skuIndex.get(sku);
     if (!p) return false;
-    if (p.ean && p.ean !== ean) {
-      eanIndex.delete(p.ean);
-    }
+    if (p.ean && p.ean !== ean) eanIndex.delete(p.ean);
     p.ean = ean;
     eanIndex.set(ean, p);
     saveCatalog();
@@ -920,14 +1202,13 @@
       btnCamera.classList.add('btn-secondary');
       scanStatus.textContent = '📡 iniciando câmera...';
 
-      // 1) Get list of cameras (also triggers permission prompt on first run)
       if (cameras.length === 0) {
         try {
           cameras = await Html5Qrcode.getCameras();
           console.log('[scanner] cameras:', cameras.map(c => `"${c.label}"`).join(', '));
         } catch (e) {
-          console.error('[scanner] getCameras failed:', e);
-          toast('Permissão de câmera negada — autorize nas config do Safari', 'error');
+          console.error('[scanner] getCameras:', e);
+          toast('Permissão de câmera negada', 'error');
           await stopCamera();
           return;
         }
@@ -938,7 +1219,6 @@
         return;
       }
 
-      // 2) Pick best back camera (prefer "Triple" or unqualified "Back", avoid Ultra Wide/Tele)
       if (!currentCameraId) {
         const rearAll = cameras.filter(c => /back|rear|traseira/i.test(c.label || ''));
         let chosen;
@@ -947,11 +1227,10 @@
                 || rearAll.find(c => !/ultra|tele/i.test(c.label || ''))
                 || rearAll[0];
         } else {
-          // Labels can be empty on iOS first call — last device is usually rear
           chosen = cameras[cameras.length - 1];
         }
         currentCameraId = chosen.id;
-        console.log('[scanner] selected:', chosen.label || '(no label)', chosen.id);
+        console.log('[scanner] selected:', chosen.label || '(no label)');
       }
 
       btnFlip.style.display = cameras.length > 1 ? 'inline-block' : 'none';
@@ -969,46 +1248,49 @@
       const onSuccess = (text) => { scanStatus.textContent = '✓ ' + text; onScan(text); };
       const onErr = () => {};
 
-      // 3) Start with deviceId; if that fails, fall back to facingMode
       try {
         await scanner.start(currentCameraId, config, onSuccess, onErr);
-        console.log('[scanner] started by deviceId');
       } catch (e1) {
         console.warn('[scanner] deviceId failed:', e1);
         try { if (scanner.isScanning) await scanner.stop(); } catch {}
         await scanner.start({ facingMode: 'environment' }, config, onSuccess, onErr);
-        console.log('[scanner] started by facingMode');
       }
 
       scanStatus.textContent = '📡 mire o código de barras';
 
-      // 4) Try to enable continuous focus (best-effort)
+      // Check torch support and continuous focus
       try {
         const videoEl = document.querySelector('#reader video');
         const track = videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks()[0];
         if (track && track.getCapabilities) {
           const caps = track.getCapabilities();
+          if (caps.torch) {
+            btnTorch.hidden = false;
+            btnTorch.classList.toggle('active', torchOn);
+          } else {
+            btnTorch.hidden = true;
+          }
           if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
             await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
           }
         }
-      } catch (e) { console.warn('[scanner] focus tweak:', e); }
+      } catch (e) { console.warn('[scanner] caps tweak:', e); }
     } catch (e) {
-      console.error('[scanner] startCamera failed:', e);
+      console.error('[scanner] startCamera:', e);
       toast('Erro câmera: ' + (e.message || e.name || 'falha'), 'error');
       await stopCamera();
     }
   }
 
   async function stopCamera() {
-    if (scanner) {
-      try { if (scanner.isScanning) await scanner.stop(); } catch (e) { console.warn('stop:', e); }
-    }
+    if (scanner) { try { if (scanner.isScanning) await scanner.stop(); } catch (e) { console.warn('stop:', e); } }
     videoWrap.classList.remove('active');
     btnCamera.textContent = '📷 Iniciar câmera';
     btnCamera.classList.add('btn-primary');
     btnCamera.classList.remove('btn-secondary');
     btnFlip.style.display = 'none';
+    btnTorch.hidden = true;
+    torchOn = false;
   }
 
   async function flipCamera() {
@@ -1019,6 +1301,22 @@
     await startCamera();
     const cam = cameras.find(c => c.id === currentCameraId);
     if (cam) toast(`Câmera: ${cam.label || 'sem nome'}`);
+  }
+
+  async function toggleTorch() {
+    try {
+      const videoEl = document.querySelector('#reader video');
+      const track = videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks()[0];
+      if (!track) { toast('Câmera não está ativa', 'warn'); return; }
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+      btnTorch.classList.toggle('active', torchOn);
+    } catch (e) {
+      console.warn('torch:', e);
+      torchOn = false;
+      btnTorch.classList.remove('active');
+      toast('Lanterna não suportada', 'warn');
+    }
   }
 
   // ---------- CSV ----------
@@ -1069,10 +1367,8 @@
   async function importCatalogs(files) {
     if (!files || files.length === 0) return;
     try {
-      // Start with current catalog as merge base (preserves linked EANs & previous imports)
       const merged = new Map();
       for (const p of catalog) merged.set(p.sku, p);
-
       let totalNew = 0, totalUpdated = 0, totalWithEan = 0, totalRowsProcessed = 0;
       const fileNames = [];
       const failures = [];
@@ -1087,19 +1383,17 @@
           const nameIdx = findColumn(headers, ['descricao', 'nome', 'produto', 'descricaoproduto']);
           const eanIdx = findColumn(headers, ['ean', 'gtin', 'gtinean', 'codigodebarras', 'codbarras', 'barcode']);
           if (skuIdx === -1) { failures.push(`${file.name}: sem coluna SKU`); console.warn(file.name, 'headers:', headers); continue; }
-
           fileNames.push(file.name);
-          const seenInThisFile = new Set();
+          const seen = new Set();
           for (let r = 1; r < rows.length; r++) {
             const row = rows[r];
             if (!row || row.length === 0) continue;
             const sku = String(row[skuIdx] || '').trim();
-            if (!sku || seenInThisFile.has(sku)) continue;
-            seenInThisFile.add(sku);
+            if (!sku || seen.has(sku)) continue;
+            seen.add(sku);
             const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
             const ean = eanIdx !== -1 ? String(row[eanIdx] || '').trim().replace(/[^0-9]/g, '') : '';
             totalRowsProcessed++;
-
             if (merged.has(sku)) {
               const existing = merged.get(sku);
               if (name) existing.name = name;
@@ -1108,7 +1402,6 @@
                 existing._origEan = ean;
                 totalWithEan++;
               } else if (ean && existing.ean === existing._origEan) {
-                // refresh canonical EAN from import (no user link to preserve)
                 existing._origEan = ean;
                 existing.ean = ean;
               }
@@ -1123,12 +1416,10 @@
           failures.push(`${file.name}: ${e.message}`);
         }
       }
-
       if (totalRowsProcessed === 0) {
         toast(failures.length ? failures[0] : 'Nenhum produto válido', 'error');
         return;
       }
-
       catalog = Array.from(merged.values());
       catalogMeta = {
         filename: fileNames.length === 1 ? fileNames[0] : `${fileNames.length} arquivos`,
@@ -1138,8 +1429,6 @@
       };
       saveCatalog();
       rebuildIndexes();
-
-      // Backfill items already scanned (preserve manually-typed names)
       let backfilled = 0;
       for (const it of items) {
         const p = eanIndex.get(it.ean);
@@ -1150,16 +1439,15 @@
         if (updated) backfilled++;
       }
       if (backfilled > 0) saveItems();
-
       render();
       const parts = [];
       if (totalNew > 0) parts.push(`+${totalNew} novos`);
       if (totalUpdated > 0) parts.push(`${totalUpdated} atualizados`);
       parts.push(`total ${catalog.length}`);
       if (backfilled > 0) parts.push(`${backfilled} itens preenchidos`);
-      let msg = parts.join(' • ');
+      let msg = parts.join(' · ');
       if (failures.length > 0) {
-        msg += ` • ⚠ ${failures.length} arquivo(s) falharam`;
+        msg += ` · ⚠ ${failures.length} falharam`;
         console.warn('Falhas:', failures);
       }
       toast(msg);
@@ -1172,7 +1460,7 @@
   function clearCatalog() {
     const linkedCount = countNewlyLinked();
     let msg = `Limpar catálogo (${catalog.length} produtos)?`;
-    if (linkedCount > 0) msg += `\n\n⚠ Você vai PERDER ${linkedCount} vinculação(ões) EAN→SKU feitas durante a contagem. Exporte primeiro se quiser preservar.`;
+    if (linkedCount > 0) msg += `\n\n⚠ Você vai PERDER ${linkedCount} vinculação(ões) EAN→SKU. Exporte antes se quiser preservar.`;
     if (!confirm(msg)) return;
     catalog = [];
     catalogMeta = null;
@@ -1201,6 +1489,10 @@
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
   }
 
+  function exportPrefix() {
+    return sessionName ? slugify(sessionName) + '_' : '';
+  }
+
   function exportBalance() {
     if (items.length === 0) { toast('Lista vazia', 'warn'); return; }
     const lines = ['SKU;Quantidade'];
@@ -1209,7 +1501,7 @@
       lines.push(`${csvEscape(code)};${Number(it.qty) || 0}`);
     }
     const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
-    downloadCSV(`balanco_${ts}.csv`, lines.join('\r\n'));
+    downloadCSV(`${exportPrefix()}balanco_${ts}.csv`, lines.join('\r\n'));
     toast(`Balanço exportado: ${items.length} itens`);
   }
 
@@ -1221,7 +1513,7 @@
       lines.push(`${csvEscape(p.sku)};${csvEscape(p.ean)}`);
     }
     const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
-    downloadCSV(`eans_vinculados_${ts}.csv`, lines.join('\r\n'));
+    downloadCSV(`${exportPrefix()}eans_vinculados_${ts}.csv`, lines.join('\r\n'));
     toast(`${linked.length} EANs exportados`);
   }
 
@@ -1234,16 +1526,24 @@
       lines.push(`${csvEscape(it.ean)};${csvEscape(name)};${Number(it.qty) || 0}`);
     }
     const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
-    downloadCSV(`nao_vinculados_${ts}.csv`, lines.join('\r\n'));
-    toast(`${unlinked.length} produtos não vinculados exportados`);
+    downloadCSV(`${exportPrefix()}nao_vinculados_${ts}.csv`, lines.join('\r\n'));
+    toast(`${unlinked.length} não vinculados exportados`);
   }
 
   // ---------- Events ----------
-  btnCamera.addEventListener('click', () => {
-    if (videoWrap.classList.contains('active')) stopCamera();
-    else startCamera();
+  sessionInput.value = sessionName;
+  sessionInput.addEventListener('input', () => {
+    sessionName = sessionInput.value.trim();
+    localStorage.setItem(LS_SESSION, sessionName);
+    render();
+  });
+
+  btnCamera.addEventListener('click', async () => {
+    if (videoWrap.classList.contains('active')) await stopCamera();
+    else await startCamera();
   });
   btnFlip.addEventListener('click', flipCamera);
+  btnTorch.addEventListener('click', toggleTorch);
 
   btnManualAdd.addEventListener('click', () => {
     const v = inputManual.value.trim();
@@ -1265,15 +1565,17 @@
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
   $('btn-clear-catalog').addEventListener('click', clearCatalog);
 
-  // List interactions
+  listSearchEl.addEventListener('input', () => {
+    listFilter = listSearchEl.value;
+    render();
+  });
+
   itemList.addEventListener('click', (e) => {
     const linkBadge = e.target.closest('[data-act="link"]');
     if (linkBadge) {
       const row = linkBadge.closest('.list-item');
       const idx = Number(row.dataset.idx);
-      const ean = items[idx].ean;
-      // Re-show the card focused on this item with link picker open
-      showLastScan(ean, true);
+      showLastScan(items[idx].ean, true);
       window.scrollTo({ top: lastScanBox.offsetTop - 60, behavior: 'smooth' });
       return;
     }
@@ -1312,9 +1614,7 @@
       if (isNaN(v) || v <= 0) {
         if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
         items.splice(idx, 1);
-      } else {
-        items[idx].qty = v;
-      }
+      } else { items[idx].qty = v; }
       saveItems(); render();
       if (activeEan && items.find(i => i.ean === activeEan)) showLastScan(activeEan, false);
     } else if (e.target.matches('input[data-act="name"]')) {
@@ -1327,12 +1627,12 @@
     }
   });
 
-  // Last-scan card handlers
   lsClose.addEventListener('click', () => {
     lastScanBox.classList.remove('show');
     activeEan = null;
     lsNameInput.blur(); lsQtyInput.blur(); lsLinkSearch.blur();
   });
+  lsUndo.addEventListener('click', undoLastScan);
   lsNameInput.addEventListener('input', () => {
     if (!activeEan) return;
     const item = items.find(i => i.ean === activeEan);
@@ -1391,7 +1691,6 @@
     saveItems(); render();
   });
 
-  // Link picker
   let searchTimer = null;
   lsLinkSearch.addEventListener('input', () => {
     clearTimeout(searchTimer);
@@ -1404,7 +1703,7 @@
     if (!activeEan) return;
     const target = skuIndex.get(sku);
     if (target && target.ean && target.ean !== activeEan) {
-      if (!confirm(`O SKU ${sku} já está vinculado ao EAN ${target.ean}. Substituir pelo EAN ${activeEan}?`)) return;
+      if (!confirm(`SKU ${sku} já está vinculado ao EAN ${target.ean}. Substituir pelo EAN ${activeEan}?`)) return;
     }
     if (linkEanToSku(activeEan, sku)) {
       toast(`✓ Vinculado ao SKU ${sku}`);
@@ -1421,6 +1720,7 @@
       saveItems();
       lastScanBox.classList.remove('show');
       activeEan = null;
+      lastUndoableScan = null;
       render();
       toast('Lista limpa');
     }

@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Scanner Inventário</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📦%3C/text%3E%3C/svg%3E">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior: none;
+  }
+  header {
+    background: #1e293b;
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #334155;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+  header .stats { font-size: 13px; color: #94a3b8; text-align: right; }
+  main { flex: 1; padding: 12px; padding-bottom: 100px; max-width: 600px; margin: 0 auto; width: 100%; }
+  section { background: #1e293b; border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid #334155; }
+  section h2 { margin: 0 0 10px 0; font-size: 13px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.15s, transform 0.05s;
+    min-height: 48px;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: #16a34a; color: white; }
+  .btn-secondary { background: #334155; color: #e2e8f0; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-warn { background: #d97706; color: white; }
+  .btn-ghost { background: transparent; color: #94a3b8; padding: 8px 12px; min-height: auto; }
+  .btn-block { width: 100%; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row > button { flex: 1; }
+
+  /* Scanner */
+  #video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    margin-bottom: 10px;
+    display: none;
+  }
+  #video-wrap.active { display: block; }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #scan-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #scan-box {
+    width: 80%;
+    height: 30%;
+    border: 2px solid #16a34a;
+    border-radius: 8px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.3);
+  }
+  #scan-overlay.flash #scan-box { border-color: #fbbf24; animation: flash 0.4s; }
+  @keyframes flash { 0% { background: rgba(251,191,36,0.4); } 100% { background: transparent; } }
+
+  .manual-entry { display: flex; gap: 8px; }
+  .manual-entry input {
+    flex: 1;
+    font-size: 16px;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: ui-monospace, "SF Mono", monospace;
+    min-width: 0;
+  }
+  .manual-entry input:focus { outline: none; border-color: #16a34a; }
+  .manual-entry button { padding: 12px 16px; }
+
+  /* Last scanned card */
+  .last-scan {
+    background: #064e3b;
+    border: 1px solid #16a34a;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 10px;
+    display: none;
+  }
+  .last-scan.show { display: block; animation: slideIn 0.2s; }
+  .last-scan.unlinked { background: #422006; border-color: #d97706; }
+  @keyframes slideIn { from { transform: translateY(-4px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .ls-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; }
+  .ls-meta { font-size: 11px; color: #86efac; font-family: ui-monospace, monospace; flex: 1; min-width: 0; word-break: break-all; }
+  .last-scan.unlinked .ls-meta { color: #fbbf24; }
+  .ls-close {
+    background: transparent;
+    color: #86efac;
+    border: none;
+    padding: 4px 8px;
+    font-size: 16px;
+    min-height: auto;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .last-scan.unlinked .ls-close { color: #fbbf24; }
+
+  /* Link picker (for unknown EAN) */
+  .ls-link {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px dashed #d97706;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    display: none;
+  }
+  .ls-link.show { display: block; }
+  .ls-link-title {
+    font-size: 12px;
+    color: #fbbf24;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .ls-link-search-wrap {
+    position: relative;
+    margin-bottom: 6px;
+  }
+  .ls-link-search-wrap input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: white;
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .ls-link-search-wrap input:focus { outline: none; border-color: #d97706; }
+  .ls-link-results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+  .ls-link-result {
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    min-height: 44px;
+    font-weight: 400;
+    display: block;
+    width: 100%;
+    line-height: 1.3;
+  }
+  .ls-link-result:active { background: #1e293b; }
+  .ls-link-result .r-sku { color: #16a34a; font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; display: block; }
+  .ls-link-result .r-name { color: #e2e8f0; display: block; }
+  .ls-link-result.has-ean { opacity: 0.5; }
+  .ls-link-result.has-ean .r-sku::after { content: ' • já vinculado'; color: #fbbf24; font-weight: 400; }
+  .ls-link-empty { color: #64748b; font-size: 12px; text-align: center; padding: 8px; font-style: italic; }
+
+  /* Editable fields in card */
+  .ls-field { margin-bottom: 8px; }
+  .ls-field:last-child { margin-bottom: 0; }
+  .ls-field label {
+    display: block;
+    font-size: 10px;
+    color: #86efac;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .last-scan.unlinked .ls-field label { color: #fbbf24; }
+  .ls-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #16a34a;
+    background: rgba(15,23,42,0.6);
+    color: white;
+    font-size: 16px;
+    font-family: inherit;
+  }
+  .last-scan.unlinked .ls-field input { border-color: #d97706; }
+  .ls-field input:focus {
+    outline: none;
+    border-color: #22c55e;
+    background: #0f172a;
+    box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+  }
+  .ls-field.qty input {
+    font-family: ui-monospace, "SF Mono", monospace;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .ls-row { display: flex; gap: 10px; align-items: flex-end; }
+  .ls-row > .ls-field { flex: 1; }
+  .ls-qty-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ls-qty-actions button {
+    width: 44px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0;
+    background: #15803d;
+    color: white;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .last-scan.unlinked .ls-qty-actions button { background: #b45309; }
+
+  /* Catalog */
+  .catalog-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .catalog-row .info { font-size: 13px; color: #94a3b8; flex: 1; min-width: 0; }
+  .catalog-row .info strong { color: #e2e8f0; }
+  .linked-count { color: #16a34a !important; font-weight: 600; }
+
+  /* List */
+  .empty-state { text-align: center; padding: 30px 10px; color: #64748b; font-size: 14px; }
+  .list-item {
+    background: #0f172a;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border: 1px solid #1e293b;
+  }
+  .list-item.pulse { animation: pulse 0.5s; }
+  @keyframes pulse {
+    0% { background: #064e3b; border-color: #16a34a; }
+    100% { background: #0f172a; border-color: #1e293b; }
+  }
+  .list-item.no-sku { border-left: 3px solid #f59e0b; }
+  .list-item .info { flex: 1; min-width: 0; }
+  .list-item .name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e2e8f0;
+    border: 1px solid transparent;
+    background: transparent;
+    padding: 4px 6px;
+    margin: -4px 0 2px -6px;
+    width: calc(100% + 6px);
+    font-family: inherit;
+    border-radius: 4px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .list-item .name:focus {
+    outline: none;
+    border-color: #16a34a;
+    background: #0f172a;
+    white-space: normal;
+    text-overflow: clip;
+  }
+  .list-item .name.unknown { color: #fbbf24; font-style: italic; }
+  .list-item .name.unknown::placeholder { color: #fbbf24; font-style: italic; opacity: 0.8; }
+  .list-item .meta { font-size: 11px; color: #64748b; font-family: ui-monospace, monospace; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .list-item .badge-unlinked {
+    background: #422006;
+    color: #fbbf24;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid #d97706;
+  }
+  .list-item .qty-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .list-item .qty-ctrl button {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    background: #334155;
+    color: white;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .list-item .qty-ctrl input {
+    width: 50px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    border: 1px solid #475569;
+    background: #0f172a;
+    color: white;
+    border-radius: 6px;
+    padding: 4px;
+    font-family: ui-monospace, monospace;
+  }
+  .list-item .qty-ctrl input:focus { outline: none; border-color: #16a34a; }
+  .list-item .remove {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0;
+    background: transparent;
+    color: #ef4444;
+    font-size: 18px;
+  }
+
+  /* Bottom bar */
+  .bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1e293b;
+    border-top: 1px solid #334155;
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+  .bottom-bar > * { flex: 1; }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #16a34a;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    max-width: 90%;
+    text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.error { background: #dc2626; }
+  #toast.warn { background: #d97706; }
+
+  input[type="file"] { display: none; }
+
+  .warning {
+    background: #422006;
+    border: 1px solid #d97706;
+    color: #fbbf24;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .info-box {
+    background: #0c4a6e;
+    border: 1px solid #0ea5e9;
+    color: #bae6fd;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+
+  @media (min-width: 600px) {
+    main { padding: 16px; }
+    section { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 Scanner Inventário</h1>
+  <div class="stats" id="stats">0 itens</div>
+</header>
+
+<main>
+
+  <section>
+    <h2>Scanner</h2>
+    <div id="video-wrap">
+      <video id="video" playsinline muted></video>
+      <div id="scan-overlay"><div id="scan-box"></div></div>
+    </div>
+    <div class="btn-row" style="margin-bottom: 10px;">
+      <button id="btn-camera" class="btn-primary">📷 Iniciar câmera</button>
+      <button id="btn-flip" class="btn-secondary" style="flex: 0 0 auto; display: none;">🔄</button>
+    </div>
+    <div class="manual-entry">
+      <input id="manual-ean" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="EAN manual (digite e Enter)" autocomplete="off">
+      <button id="btn-manual-add" class="btn-secondary">+</button>
+    </div>
+
+    <div id="last-scan" class="last-scan">
+      <div class="ls-header">
+        <div class="ls-meta" id="ls-meta">—</div>
+        <button class="ls-close" id="ls-close" title="Fechar">✕</button>
+      </div>
+
+      <div id="ls-link" class="ls-link">
+        <div class="ls-link-title">⚠ EAN não cadastrado — vincule ao produto OLIST:</div>
+        <div class="ls-link-search-wrap">
+          <input id="ls-link-search" type="text" placeholder="Buscar por nome ou SKU..." autocomplete="off">
+        </div>
+        <div id="ls-link-results"></div>
+      </div>
+
+      <div class="ls-field">
+        <label for="ls-name-input">Nome do produto</label>
+        <input id="ls-name-input" type="text" placeholder="Digite o nome do produto" autocomplete="off" autocapitalize="words">
+      </div>
+      <div class="ls-row">
+        <div class="ls-field qty">
+          <label for="ls-qty-input">Quantidade</label>
+          <input id="ls-qty-input" type="tel" inputmode="numeric" pattern="[0-9]*">
+        </div>
+        <div class="ls-qty-actions">
+          <button id="ls-qty-inc" type="button">+</button>
+          <button id="ls-qty-dec" type="button">−</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Catálogo OLIST</h2>
+    <div class="catalog-row">
+      <div class="info">
+        <strong id="catalog-count">0</strong> produtos
+        <span id="linked-count" class="linked-count"></span>
+        <div id="catalog-meta" style="font-size: 11px; color: #64748b; margin-top: 2px;"></div>
+      </div>
+      <button id="btn-import-catalog" class="btn-secondary">Importar CSV</button>
+    </div>
+    <button id="btn-export-eans" class="btn-warn btn-block" style="display: none; margin-top: 10px;">
+      🏷 Exportar EANs vinculados (SKU;GTIN)
+    </button>
+    <input type="file" id="file-catalog" accept=".csv,text/csv">
+  </section>
+
+  <section>
+    <h2>Itens escaneados</h2>
+    <div id="warn-no-sku" class="warning" style="display: none;"></div>
+    <div id="item-list"></div>
+  </section>
+
+</main>
+
+<div class="bottom-bar">
+  <button id="btn-export" class="btn-primary">⬇ Balanço CSV</button>
+  <button id="btn-clear" class="btn-danger">🗑 Limpar</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Constants ----------
+  const LS_ITEMS = 'inv_items_v1';
+  const LS_CATALOG = 'inv_catalog_v2';
+  const LS_CATALOG_OLD = 'inv_catalog_v1';
+  const LS_CATALOG_META = 'inv_catalog_meta_v1';
+  const SCAN_DEBOUNCE_MS = 1500;
+  const SEARCH_LIMIT = 6;
+
+  // ---------- State ----------
+  let items = loadJSON(LS_ITEMS, []);
+  let catalog = loadCatalog();
+  let eanIndex = new Map();
+  let skuIndex = new Map();
+  let catalogMeta = loadJSON(LS_CATALOG_META, null);
+  rebuildIndexes();
+
+  let codeReader = null;
+  let currentDeviceId = null;
+  let videoDevices = [];
+  let lastScannedEan = null;
+  let lastScannedAt = 0;
+  let activeEan = null;
+
+  // ---------- DOM refs ----------
+  const $ = (id) => document.getElementById(id);
+  const btnCamera = $('btn-camera');
+  const btnFlip = $('btn-flip');
+  const videoWrap = $('video-wrap');
+  const video = $('video');
+  const overlay = $('scan-overlay');
+  const inputManual = $('manual-ean');
+  const btnManualAdd = $('btn-manual-add');
+  const lastScanBox = $('last-scan');
+  const lsMeta = $('ls-meta');
+  const lsClose = $('ls-close');
+  const lsLink = $('ls-link');
+  const lsLinkSearch = $('ls-link-search');
+  const lsLinkResults = $('ls-link-results');
+  const lsNameInput = $('ls-name-input');
+  const lsQtyInput = $('ls-qty-input');
+  const lsQtyInc = $('ls-qty-inc');
+  const lsQtyDec = $('ls-qty-dec');
+  const catalogCount = $('catalog-count');
+  const linkedCountEl = $('linked-count');
+  const catalogMetaEl = $('catalog-meta');
+  const btnImport = $('btn-import-catalog');
+  const btnExportEans = $('btn-export-eans');
+  const fileCatalog = $('file-catalog');
+  const itemList = $('item-list');
+  const warnNoSku = $('warn-no-sku');
+  const btnExport = $('btn-export');
+  const btnClear = $('btn-clear');
+  const stats = $('stats');
+  const toastEl = $('toast');
+
+  // ---------- Persistence ----------
+  function loadJSON(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  }
+  function loadCatalog() {
+    const raw = loadJSON(LS_CATALOG, null);
+    if (Array.isArray(raw)) return raw;
+    // Migrate old format: {ean: {sku, name}}
+    const old = loadJSON(LS_CATALOG_OLD, null);
+    if (old && typeof old === 'object' && !Array.isArray(old)) {
+      const arr = Object.entries(old).map(([ean, info]) => ({
+        sku: info.sku, name: info.name, ean, _origEan: ean
+      }));
+      try { localStorage.removeItem(LS_CATALOG_OLD); } catch {}
+      return arr;
+    }
+    return [];
+  }
+  function saveItems() { localStorage.setItem(LS_ITEMS, JSON.stringify(items)); }
+  function saveCatalog() {
+    localStorage.setItem(LS_CATALOG, JSON.stringify(catalog));
+    if (catalogMeta) localStorage.setItem(LS_CATALOG_META, JSON.stringify(catalogMeta));
+  }
+  function rebuildIndexes() {
+    eanIndex.clear();
+    skuIndex.clear();
+    for (const p of catalog) {
+      if (p.sku) skuIndex.set(p.sku, p);
+      if (p.ean) eanIndex.set(p.ean, p);
+    }
+  }
+
+  // ---------- Helpers ----------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function normalizeKey(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  function toast(msg, type = '') {
+    toastEl.textContent = msg;
+    toastEl.className = type;
+    toastEl.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove('show'), 2400);
+  }
+
+  let audioCtx = null;
+  function beep() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.value = 0.15;
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + 0.08);
+    } catch {}
+  }
+  function feedback() {
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
+    beep();
+    overlay.classList.add('flash');
+    setTimeout(() => overlay.classList.remove('flash'), 400);
+  }
+
+  function countNewlyLinked() {
+    return catalog.filter(p => p.ean && p.ean !== (p._origEan || '')).length;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    // Stats
+    const totalItems = items.length;
+    const totalUnits = items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+    stats.textContent = `${totalItems} ${totalItems === 1 ? 'item' : 'itens'} • ${totalUnits} un`;
+
+    // Catalog
+    catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
+    const newlyLinked = countNewlyLinked();
+    if (newlyLinked > 0) {
+      linkedCountEl.textContent = ` • +${newlyLinked} EANs vinculados`;
+      btnExportEans.style.display = 'block';
+      btnExportEans.textContent = `🏷 Exportar ${newlyLinked} EAN${newlyLinked > 1 ? 's' : ''} vinculado${newlyLinked > 1 ? 's' : ''} (SKU;GTIN)`;
+    } else {
+      linkedCountEl.textContent = '';
+      btnExportEans.style.display = 'none';
+    }
+    if (catalogMeta) {
+      const d = new Date(catalogMeta.importedAt);
+      catalogMetaEl.textContent = `${catalogMeta.filename} • ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+    } else {
+      catalogMetaEl.textContent = 'Importe o CSV de produtos do OLIST';
+    }
+
+    // No-SKU warning
+    const noSkuCount = items.filter(i => !i.sku).length;
+    if (noSkuCount > 0) {
+      warnNoSku.style.display = 'block';
+      warnNoSku.textContent = `⚠ ${noSkuCount} ${noSkuCount === 1 ? 'item' : 'itens'} sem SKU OLIST. Rebipe ou toque em "vincular" pra associar antes de exportar.`;
+    } else {
+      warnNoSku.style.display = 'none';
+    }
+
+    // List
+    if (items.length === 0) {
+      itemList.innerHTML = '<div class="empty-state">Nenhum item escaneado ainda</div>';
+    } else {
+      itemList.innerHTML = '';
+      [...items].reverse().forEach((it, revIdx) => {
+        const idx = items.length - 1 - revIdx;
+        const div = document.createElement('div');
+        div.className = 'list-item' + (it.sku ? '' : ' no-sku');
+        div.dataset.idx = idx;
+        const nameHtml = `<input type="text" class="name ${it.name ? '' : 'unknown'}" data-act="name" value="${escapeHtml(it.name)}" placeholder="Sem nome — toque pra digitar" autocomplete="off" autocapitalize="words">`;
+        const linkBadge = (!it.sku && catalog.length > 0)
+          ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
+        const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} • ` : '';
+        div.innerHTML = `
+          <div class="info">
+            ${nameHtml}
+            <div class="meta">${skuHtml}EAN: ${escapeHtml(it.ean)} ${linkBadge}</div>
+          </div>
+          <div class="qty-ctrl">
+            <button data-act="dec">−</button>
+            <input type="tel" inputmode="numeric" pattern="[0-9]*" value="${it.qty}" data-act="edit">
+            <button data-act="inc">+</button>
+          </div>
+          <button class="remove" data-act="remove">✕</button>
+        `;
+        itemList.appendChild(div);
+      });
+    }
+  }
+
+  // ---------- Scan handling ----------
+  function onScan(ean) {
+    ean = String(ean).trim();
+    if (!ean || !/^\d{6,14}$/.test(ean)) {
+      toast('EAN inválido', 'error');
+      return;
+    }
+    const now = Date.now();
+    if (ean === lastScannedEan && (now - lastScannedAt) < SCAN_DEBOUNCE_MS) return;
+    lastScannedEan = ean;
+    lastScannedAt = now;
+
+    const prod = eanIndex.get(ean);
+    const existing = items.find(i => i.ean === ean);
+
+    if (existing) {
+      existing.qty = (Number(existing.qty) || 0) + 1;
+      if (prod) {
+        if (!existing.sku) existing.sku = prod.sku;
+        if (!existing.name) existing.name = prod.name;
+      }
+    } else {
+      items.push({
+        ean,
+        sku: prod ? prod.sku : '',
+        name: prod ? prod.name : '',
+        qty: 1
+      });
+    }
+    saveItems();
+
+    feedback();
+    render();
+    const isNewUnknown = !existing && !prod;
+    showLastScan(ean, isNewUnknown);
+
+    setTimeout(() => {
+      const el = itemList.querySelector(`[data-idx="${items.findIndex(i => i.ean === ean)}"]`);
+      if (el) el.classList.add('pulse');
+    }, 10);
+  }
+
+  function showLastScan(ean, focusFirst) {
+    activeEan = ean;
+    const item = items.find(i => i.ean === ean);
+    if (!item) { lastScanBox.classList.remove('show'); return; }
+    lastScanBox.classList.add('show');
+
+    const unlinked = !item.sku && catalog.length > 0;
+    lastScanBox.classList.toggle('unlinked', unlinked);
+
+    lsMeta.textContent = item.sku
+      ? `✓ SKU: ${item.sku} • EAN: ${ean}`
+      : `EAN: ${ean}${catalog.length > 0 ? ' • sem SKU OLIST' : ''}`;
+
+    // Link picker visibility
+    if (unlinked) {
+      lsLink.classList.add('show');
+      lsLinkSearch.value = '';
+      renderSearchResults('');
+      if (focusFirst) {
+        setTimeout(() => lsLinkSearch.focus(), 80);
+      }
+    } else {
+      lsLink.classList.remove('show');
+    }
+
+    if (document.activeElement !== lsNameInput) {
+      lsNameInput.value = item.name || '';
+    }
+    if (document.activeElement !== lsQtyInput) {
+      lsQtyInput.value = item.qty;
+    }
+
+    if (focusFirst && !unlinked && !item.name) {
+      setTimeout(() => { lsNameInput.focus(); lsNameInput.select(); }, 80);
+    }
+  }
+
+  // ---------- Search & link ----------
+  function searchCatalog(query) {
+    const q = normalizeKey(query);
+    if (!q) return [];
+    const tokens = q.split(' ').filter(Boolean);
+    const results = [];
+    for (const p of catalog) {
+      const text = normalizeKey((p.sku || '') + ' ' + (p.name || ''));
+      if (!tokens.every(t => text.includes(t))) continue;
+      let score = 0;
+      const skuN = normalizeKey(p.sku || '');
+      const nameN = normalizeKey(p.name || '');
+      if (skuN === q) score += 1000;
+      else if (skuN.startsWith(q)) score += 500;
+      if (nameN.startsWith(q)) score += 200;
+      else if (nameN.includes(q)) score += 100;
+      if (!p.ean) score += 50;
+      results.push({ p, score });
+    }
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, SEARCH_LIMIT).map(r => r.p);
+  }
+
+  function renderSearchResults(query) {
+    const results = searchCatalog(query);
+    if (!query) {
+      lsLinkResults.innerHTML = '<div class="ls-link-empty">Digite parte do nome ou SKU pra buscar</div>';
+      return;
+    }
+    if (results.length === 0) {
+      lsLinkResults.innerHTML = '<div class="ls-link-empty">Nenhum produto encontrado</div>';
+      return;
+    }
+    lsLinkResults.innerHTML = results.map(p => `
+      <button class="ls-link-result ${p.ean ? 'has-ean' : ''}" data-sku="${escapeHtml(p.sku)}">
+        <span class="r-sku">${escapeHtml(p.sku)}</span>
+        <span class="r-name">${escapeHtml(p.name || '(sem nome)')}</span>
+      </button>
+    `).join('');
+  }
+
+  function linkEanToSku(ean, sku) {
+    const p = skuIndex.get(sku);
+    if (!p) return false;
+    if (p.ean && p.ean !== ean) {
+      eanIndex.delete(p.ean);
+    }
+    p.ean = ean;
+    eanIndex.set(ean, p);
+    saveCatalog();
+    const item = items.find(i => i.ean === ean);
+    if (item) {
+      item.sku = p.sku;
+      item.name = p.name;
+      saveItems();
+    }
+    return true;
+  }
+
+  // ---------- Camera ----------
+  async function startCamera() {
+    try {
+      if (!codeReader) {
+        const hints = new Map();
+        const formats = [
+          ZXing.BarcodeFormat.EAN_13,
+          ZXing.BarcodeFormat.EAN_8,
+          ZXing.BarcodeFormat.UPC_A,
+          ZXing.BarcodeFormat.UPC_E,
+          ZXing.BarcodeFormat.CODE_128,
+          ZXing.BarcodeFormat.CODE_39
+        ];
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        codeReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+      }
+      videoDevices = await codeReader.listVideoInputDevices();
+      if (videoDevices.length === 0) { toast('Nenhuma câmera encontrada', 'error'); return; }
+      if (!currentDeviceId) {
+        const rear = videoDevices.find(d => /back|rear|environment|traseira/i.test(d.label));
+        currentDeviceId = rear ? rear.deviceId : videoDevices[videoDevices.length - 1].deviceId;
+      }
+      btnFlip.style.display = videoDevices.length > 1 ? 'inline-block' : 'none';
+      videoWrap.classList.add('active');
+      btnCamera.textContent = '⏹ Parar câmera';
+      btnCamera.classList.remove('btn-primary');
+      btnCamera.classList.add('btn-secondary');
+      await codeReader.decodeFromVideoDevice(currentDeviceId, video, (result) => {
+        if (result) onScan(result.getText());
+      });
+    } catch (e) {
+      console.error(e);
+      toast('Erro câmera: ' + (e.message || e.name || 'permissão negada'), 'error');
+      stopCamera();
+    }
+  }
+  function stopCamera() {
+    if (codeReader) { try { codeReader.reset(); } catch {} }
+    videoWrap.classList.remove('active');
+    btnCamera.textContent = '📷 Iniciar câmera';
+    btnCamera.classList.add('btn-primary');
+    btnCamera.classList.remove('btn-secondary');
+    btnFlip.style.display = 'none';
+  }
+  async function flipCamera() {
+    if (videoDevices.length < 2) return;
+    const idx = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
+    currentDeviceId = videoDevices[(idx + 1) % videoDevices.length].deviceId;
+    if (codeReader) try { codeReader.reset(); } catch {}
+    await codeReader.decodeFromVideoDevice(currentDeviceId, video, (result) => {
+      if (result) onScan(result.getText());
+    });
+  }
+
+  // ---------- CSV ----------
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const firstLine = text.split(/\r?\n/)[0] || '';
+    const sep = (firstLine.match(/;/g) || []).length >= (firstLine.match(/,/g) || []).length ? ';' : ',';
+    const rows = [];
+    let cur = [], field = '', inQ = false, i = 0;
+    while (i < text.length) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i+1] === '"') { field += '"'; i += 2; continue; }
+          inQ = false; i++; continue;
+        }
+        field += c; i++;
+      } else {
+        if (c === '"') { inQ = true; i++; }
+        else if (c === sep) { cur.push(field); field = ''; i++; }
+        else if (c === '\n' || c === '\r') {
+          cur.push(field); field = '';
+          if (cur.length > 1 || cur[0] !== '') rows.push(cur);
+          cur = [];
+          if (c === '\r' && text[i+1] === '\n') i += 2; else i++;
+        } else { field += c; i++; }
+      }
+    }
+    if (field !== '' || cur.length > 0) { cur.push(field); rows.push(cur); }
+    return rows;
+  }
+
+  function findColumn(headers, candidates) {
+    const norm = headers.map(h => normalizeKey(h).replace(/\s/g, ''));
+    for (const cand of candidates) {
+      const c = normalizeKey(cand).replace(/\s/g, '');
+      const idx = norm.indexOf(c);
+      if (idx !== -1) return idx;
+    }
+    for (const cand of candidates) {
+      const c = normalizeKey(cand).replace(/\s/g, '');
+      const idx = norm.findIndex(h => h.includes(c));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  }
+
+  async function importCatalog(file) {
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length < 2) { toast('CSV vazio ou inválido', 'error'); return; }
+      const headers = rows[0];
+      const skuIdx = findColumn(headers, ['sku', 'codigosku', 'codigo']);
+      const nameIdx = findColumn(headers, ['descricao', 'nome', 'produto', 'descricaoproduto']);
+      const eanIdx = findColumn(headers, ['ean', 'gtin', 'gtinean', 'codigodebarras', 'codbarras', 'barcode']);
+
+      if (skuIdx === -1) {
+        toast('Não achei coluna SKU/Código no CSV', 'error');
+        console.warn('Cabeçalhos:', headers);
+        return;
+      }
+
+      // Preserve already-linked EANs from current session (so user doesn't lose work on re-import)
+      const linkedMap = new Map(); // sku -> ean
+      for (const p of catalog) {
+        if (p.ean && p.ean !== (p._origEan || '')) {
+          linkedMap.set(p.sku, p.ean);
+        }
+      }
+
+      const newCatalog = [];
+      const seenSkus = new Set();
+      let withEan = 0, totalSkus = 0;
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length === 0) continue;
+        const sku = String(row[skuIdx] || '').trim();
+        if (!sku || seenSkus.has(sku)) continue;
+        seenSkus.add(sku);
+        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
+        let ean = eanIdx !== -1 ? String(row[eanIdx] || '').trim().replace(/[^0-9]/g, '') : '';
+        const origEan = ean;
+        // If we had linked this SKU before, preserve that linkage
+        if (!ean && linkedMap.has(sku)) ean = linkedMap.get(sku);
+        if (ean) withEan++;
+        totalSkus++;
+        newCatalog.push({ sku, name, ean, _origEan: origEan });
+      }
+
+      if (totalSkus === 0) { toast('Nenhum produto válido no CSV', 'error'); return; }
+
+      catalog = newCatalog;
+      catalogMeta = { filename: file.name, importedAt: Date.now(), rowCount: totalSkus };
+      saveCatalog();
+      rebuildIndexes();
+
+      // Backfill items already scanned (preserve manually-typed names)
+      let backfilled = 0;
+      for (const it of items) {
+        const p = eanIndex.get(it.ean);
+        if (!p) continue;
+        let updated = false;
+        if (!it.sku) { it.sku = p.sku; updated = true; }
+        if (!it.name) { it.name = p.name; updated = true; }
+        if (updated) backfilled++;
+      }
+      if (backfilled > 0) saveItems();
+
+      render();
+      const withEanMsg = withEan > 0 ? ` (${withEan} com EAN)` : ' (todos sem EAN — vincule durante a contagem)';
+      toast(`${totalSkus} produtos importados${withEanMsg}${backfilled ? ` • ${backfilled} preenchidos` : ''}`);
+    } catch (e) {
+      console.error(e);
+      toast('Erro ao ler CSV: ' + e.message, 'error');
+    }
+  }
+
+  function csvEscape(s) {
+    s = String(s);
+    if (/[;"\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function downloadCSV(filename, content) {
+    const csv = '﻿' + content;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  }
+
+  function exportBalance() {
+    if (items.length === 0) { toast('Lista vazia', 'warn'); return; }
+    const lines = ['SKU;Quantidade'];
+    for (const it of items) {
+      const code = it.sku || it.ean;
+      lines.push(`${csvEscape(code)};${Number(it.qty) || 0}`);
+    }
+    const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
+    downloadCSV(`balanco_${ts}.csv`, lines.join('\r\n'));
+    toast(`Balanço exportado: ${items.length} itens`);
+  }
+
+  function exportEans() {
+    const linked = catalog.filter(p => p.ean && p.ean !== (p._origEan || ''));
+    if (linked.length === 0) { toast('Nenhum EAN novo vinculado', 'warn'); return; }
+    const lines = ['SKU;GTIN'];
+    for (const p of linked) {
+      lines.push(`${csvEscape(p.sku)};${csvEscape(p.ean)}`);
+    }
+    const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
+    downloadCSV(`eans_vinculados_${ts}.csv`, lines.join('\r\n'));
+    toast(`${linked.length} EANs exportados`);
+  }
+
+  // ---------- Events ----------
+  btnCamera.addEventListener('click', () => {
+    if (videoWrap.classList.contains('active')) stopCamera();
+    else startCamera();
+  });
+  btnFlip.addEventListener('click', flipCamera);
+
+  btnManualAdd.addEventListener('click', () => {
+    const v = inputManual.value.trim();
+    if (!v) return;
+    onScan(v);
+    inputManual.value = '';
+  });
+  inputManual.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); btnManualAdd.click(); }
+  });
+
+  btnImport.addEventListener('click', () => fileCatalog.click());
+  fileCatalog.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) importCatalog(f);
+    fileCatalog.value = '';
+  });
+  btnExportEans.addEventListener('click', exportEans);
+
+  // List interactions
+  itemList.addEventListener('click', (e) => {
+    const linkBadge = e.target.closest('[data-act="link"]');
+    if (linkBadge) {
+      const row = linkBadge.closest('.list-item');
+      const idx = Number(row.dataset.idx);
+      const ean = items[idx].ean;
+      // Re-show the card focused on this item with link picker open
+      showLastScan(ean, true);
+      window.scrollTo({ top: lastScanBox.offsetTop - 60, behavior: 'smooth' });
+      return;
+    }
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const row = btn.closest('.list-item');
+    if (!row) return;
+    const idx = Number(row.dataset.idx);
+    const act = btn.dataset.act;
+    if (act === 'inc') {
+      items[idx].qty = (Number(items[idx].qty) || 0) + 1;
+      saveItems(); render();
+      if (activeEan === items[idx].ean) showLastScan(activeEan, false);
+    } else if (act === 'dec') {
+      items[idx].qty = (Number(items[idx].qty) || 0) - 1;
+      if (items[idx].qty <= 0) {
+        if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
+        items.splice(idx, 1);
+      }
+      saveItems(); render();
+      if (activeEan && items.find(i => i.ean === activeEan)) showLastScan(activeEan, false);
+    } else if (act === 'remove') {
+      if (confirm(`Remover "${items[idx].name || items[idx].ean}" da lista?`)) {
+        if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
+        items.splice(idx, 1); saveItems(); render();
+      }
+    }
+  });
+
+  itemList.addEventListener('change', (e) => {
+    const row = e.target.closest('.list-item');
+    if (!row) return;
+    const idx = Number(row.dataset.idx);
+    if (e.target.matches('input[data-act="edit"]')) {
+      const v = parseInt(e.target.value, 10);
+      if (isNaN(v) || v <= 0) {
+        if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
+        items.splice(idx, 1);
+      } else {
+        items[idx].qty = v;
+      }
+      saveItems(); render();
+      if (activeEan && items.find(i => i.ean === activeEan)) showLastScan(activeEan, false);
+    } else if (e.target.matches('input[data-act="name"]')) {
+      items[idx].name = e.target.value.trim();
+      saveItems();
+      e.target.classList.toggle('unknown', !items[idx].name);
+      if (activeEan === items[idx].ean && document.activeElement !== lsNameInput) {
+        lsNameInput.value = items[idx].name;
+      }
+    }
+  });
+
+  // Last-scan card handlers
+  lsClose.addEventListener('click', () => {
+    lastScanBox.classList.remove('show');
+    activeEan = null;
+    lsNameInput.blur(); lsQtyInput.blur(); lsLinkSearch.blur();
+  });
+  lsNameInput.addEventListener('input', () => {
+    if (!activeEan) return;
+    const item = items.find(i => i.ean === activeEan);
+    if (!item) return;
+    item.name = lsNameInput.value.trim();
+    saveItems();
+    const idx = items.findIndex(i => i.ean === activeEan);
+    const rowInput = itemList.querySelector(`[data-idx="${idx}"] input[data-act="name"]`);
+    if (rowInput && document.activeElement !== rowInput) {
+      rowInput.value = item.name;
+      rowInput.classList.toggle('unknown', !item.name);
+    }
+  });
+  lsNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); lsNameInput.blur(); }
+  });
+  lsQtyInput.addEventListener('focus', () => lsQtyInput.select());
+  lsQtyInput.addEventListener('input', () => {
+    if (!activeEan) return;
+    const item = items.find(i => i.ean === activeEan);
+    if (!item) return;
+    const v = parseInt(lsQtyInput.value, 10);
+    if (!isNaN(v) && v > 0) { item.qty = v; saveItems(); render(); }
+  });
+  lsQtyInput.addEventListener('blur', () => {
+    if (!activeEan) return;
+    const item = items.find(i => i.ean === activeEan);
+    if (!item) { lsQtyInput.value = ''; return; }
+    const v = parseInt(lsQtyInput.value, 10);
+    if (isNaN(v) || v <= 0) lsQtyInput.value = item.qty;
+  });
+  lsQtyInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); lsQtyInput.blur(); }
+  });
+  lsQtyInc.addEventListener('click', () => {
+    if (!activeEan) return;
+    const item = items.find(i => i.ean === activeEan);
+    if (!item) return;
+    item.qty = (Number(item.qty) || 0) + 1;
+    saveItems(); render();
+    lsQtyInput.value = item.qty;
+  });
+  lsQtyDec.addEventListener('click', () => {
+    if (!activeEan) return;
+    const item = items.find(i => i.ean === activeEan);
+    if (!item) return;
+    item.qty = (Number(item.qty) || 0) - 1;
+    if (item.qty <= 0) {
+      const idx = items.findIndex(i => i.ean === activeEan);
+      if (idx !== -1) items.splice(idx, 1);
+      lastScanBox.classList.remove('show');
+      activeEan = null;
+    } else {
+      lsQtyInput.value = item.qty;
+    }
+    saveItems(); render();
+  });
+
+  // Link picker
+  let searchTimer = null;
+  lsLinkSearch.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderSearchResults(lsLinkSearch.value), 80);
+  });
+  lsLinkResults.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-sku]');
+    if (!btn) return;
+    const sku = btn.dataset.sku;
+    if (!activeEan) return;
+    const target = skuIndex.get(sku);
+    if (target && target.ean && target.ean !== activeEan) {
+      if (!confirm(`O SKU ${sku} já está vinculado ao EAN ${target.ean}. Substituir pelo EAN ${activeEan}?`)) return;
+    }
+    if (linkEanToSku(activeEan, sku)) {
+      toast(`✓ Vinculado ao SKU ${sku}`);
+      render();
+      showLastScan(activeEan, false);
+    }
+  });
+
+  btnExport.addEventListener('click', exportBalance);
+  btnClear.addEventListener('click', () => {
+    if (items.length === 0) { toast('Lista já está vazia', 'warn'); return; }
+    if (confirm(`Limpar todos os ${items.length} itens escaneados?\nO catálogo OLIST e os EANs vinculados serão mantidos.`)) {
+      items = [];
+      saveItems();
+      lastScanBox.classList.remove('show');
+      activeEan = null;
+      render();
+      toast('Lista limpa');
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (videoWrap.classList.contains('active')) stopCamera();
+  });
+
+  // ---------- Init ----------
+  render();
+  if (!window.isSecureContext) toast('Atenção: câmera só funciona em HTTPS', 'warn');
+})();
+</script>
+</body>
+</html>

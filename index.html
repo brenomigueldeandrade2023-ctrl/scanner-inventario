@@ -924,36 +924,55 @@
         });
       }
 
-      // First start uses facingMode (browser auto-picks the standard rear cam).
-      // Subsequent flips cycle through device IDs.
-      let camSelector;
-      if (useFacingMode) {
-        camSelector = {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          focusMode: 'continuous',
-          advanced: [{ focusMode: 'continuous' }]
-        };
-      } else {
-        camSelector = currentCameraId;
-      }
-
       const config = {
         fps: 15,
         aspectRatio: 1.333334,
         disableFlip: true
       };
+      const onSuccess = (decodedText) => {
+        scanStatus.textContent = '✓ ' + decodedText;
+        onScan(decodedText);
+      };
+      const onErr = () => {};
 
-      await scanner.start(
-        camSelector,
-        config,
-        (decodedText) => {
-          scanStatus.textContent = '✓ ' + decodedText;
-          onScan(decodedText);
-        },
-        () => { /* per-frame "not found" — ignore */ }
-      );
+      // Try a sequence of camera selectors, falling back on failure.
+      const attempts = [];
+      if (useFacingMode) {
+        attempts.push({ label: 'facingMode env hires', sel: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+        attempts.push({ label: 'facingMode env', sel: { facingMode: 'environment' } });
+        attempts.push({ label: 'facingMode any', sel: { facingMode: { ideal: 'environment' } } });
+      }
+      if (currentCameraId) {
+        attempts.push({ label: 'deviceId ' + currentCameraId.slice(0, 8), sel: currentCameraId });
+      }
+      // Last resort: enumerate and try each camera
+      if (!useFacingMode || attempts.length === 0) {
+        if (cameras.length === 0) {
+          try { cameras = await Html5Qrcode.getCameras(); } catch (e) { console.warn('getCameras:', e); }
+        }
+        for (const c of cameras) {
+          attempts.push({ label: 'cam ' + (c.label || c.id.slice(0, 8)), sel: c.id });
+        }
+      }
+
+      let started = false;
+      let lastErr = null;
+      for (const att of attempts) {
+        try {
+          console.log('[scanner] trying:', att.label, att.sel);
+          await scanner.start(att.sel, config, onSuccess, onErr);
+          console.log('[scanner] started with:', att.label);
+          started = true;
+          break;
+        } catch (e) {
+          console.warn('[scanner] failed:', att.label, e);
+          lastErr = e;
+          try { if (scanner.isScanning) await scanner.stop(); } catch {}
+        }
+      }
+      if (!started) {
+        throw lastErr || new Error('Nenhuma configuração de câmera funcionou');
+      }
       scanStatus.textContent = '📡 mire o código de barras';
 
       // After camera is granted, populate cameras list (for flip)

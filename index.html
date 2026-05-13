@@ -72,7 +72,16 @@
     display: none;
   }
   #video-wrap.active { display: block; }
-  #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #reader { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #reader video, #reader canvas, #reader img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    border: none !important;
+  }
+  #reader > div, #reader__scan_region, #reader__dashboard { display: none !important; }
+  #reader__scan_region { background: transparent !important; }
   #scan-overlay {
     position: absolute;
     inset: 0;
@@ -80,6 +89,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 5;
   }
   #scan-box {
     width: 80%;
@@ -90,6 +100,19 @@
   }
   #scan-overlay.flash #scan-box { border-color: #fbbf24; animation: flash 0.4s; }
   @keyframes flash { 0% { background: rgba(251,191,36,0.4); } 100% { background: transparent; } }
+  #scan-status {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0,0,0,0.6);
+    color: #86efac;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    z-index: 6;
+    pointer-events: none;
+  }
 
   .manual-entry { display: flex; gap: 8px; }
   .manual-entry input {
@@ -426,8 +449,9 @@
   <section>
     <h2>Scanner</h2>
     <div id="video-wrap">
-      <video id="video" playsinline muted></video>
+      <div id="reader"></div>
       <div id="scan-overlay"><div id="scan-box"></div></div>
+      <div id="scan-status">📡 detectando...</div>
     </div>
     <div class="btn-row" style="margin-bottom: 10px;">
       <button id="btn-camera" class="btn-primary">📷 Iniciar câmera</button>
@@ -503,7 +527,7 @@
 
 <div id="toast"></div>
 
-<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 (() => {
   'use strict';
@@ -524,9 +548,9 @@
   let catalogMeta = loadJSON(LS_CATALOG_META, null);
   rebuildIndexes();
 
-  let codeReader = null;
-  let currentDeviceId = null;
-  let videoDevices = [];
+  let scanner = null;
+  let cameras = [];
+  let currentCameraId = null;
   let lastScannedEan = null;
   let lastScannedAt = 0;
   let activeEan = null;
@@ -536,8 +560,8 @@
   const btnCamera = $('btn-camera');
   const btnFlip = $('btn-flip');
   const videoWrap = $('video-wrap');
-  const video = $('video');
   const overlay = $('scan-overlay');
+  const scanStatus = $('scan-status');
   const inputManual = $('manual-ean');
   const btnManualAdd = $('btn-manual-add');
   const lastScanBox = $('last-scan');
@@ -617,18 +641,25 @@
   }
 
   let audioCtx = null;
-  function beep() {
+  async function ensureAudio() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+    } catch (e) { console.warn('audio init:', e); }
+  }
+  function beep() {
+    if (!audioCtx) return;
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.type = 'sine';
       o.frequency.value = 880;
-      g.gain.value = 0.15;
+      g.gain.value = 0.2;
       o.connect(g).connect(audioCtx.destination);
       o.start();
-      o.stop(audioCtx.currentTime + 0.08);
-    } catch {}
+      o.stop(audioCtx.currentTime + 0.1);
+    } catch (e) { console.warn('beep:', e); }
   }
   function feedback() {
     try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
@@ -845,59 +876,100 @@
     return true;
   }
 
-  // ---------- Camera ----------
+  // ---------- Camera (html5-qrcode) ----------
+  function getSupportedFormats() {
+    if (typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+    return [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.ITF
+    ];
+  }
+
   async function startCamera() {
+    if (typeof Html5Qrcode === 'undefined') {
+      toast('Biblioteca de scanner não carregou — verifique a conexão', 'error');
+      return;
+    }
+    await ensureAudio();
     try {
-      if (!codeReader) {
-        const hints = new Map();
-        const formats = [
-          ZXing.BarcodeFormat.EAN_13,
-          ZXing.BarcodeFormat.EAN_8,
-          ZXing.BarcodeFormat.UPC_A,
-          ZXing.BarcodeFormat.UPC_E,
-          ZXing.BarcodeFormat.CODE_128,
-          ZXing.BarcodeFormat.CODE_39
-        ];
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-        codeReader = new ZXing.BrowserMultiFormatReader(hints, 250);
+      if (!cameras || cameras.length === 0) {
+        try { cameras = await Html5Qrcode.getCameras(); }
+        catch (e) {
+          console.error('getCameras failed:', e);
+          toast('Permissão de câmera negada', 'error');
+          return;
+        }
       }
-      videoDevices = await codeReader.listVideoInputDevices();
-      if (videoDevices.length === 0) { toast('Nenhuma câmera encontrada', 'error'); return; }
-      if (!currentDeviceId) {
-        const rear = videoDevices.find(d => /back|rear|environment|traseira/i.test(d.label));
-        currentDeviceId = rear ? rear.deviceId : videoDevices[videoDevices.length - 1].deviceId;
+      if (!cameras || cameras.length === 0) {
+        toast('Nenhuma câmera encontrada', 'error');
+        return;
       }
-      btnFlip.style.display = videoDevices.length > 1 ? 'inline-block' : 'none';
+      if (!currentCameraId) {
+        const rear = cameras.find(c => /back|rear|environment|traseira/i.test(c.label || ''));
+        currentCameraId = rear ? rear.id : cameras[cameras.length - 1].id;
+      }
+      btnFlip.style.display = cameras.length > 1 ? 'inline-block' : 'none';
       videoWrap.classList.add('active');
       btnCamera.textContent = '⏹ Parar câmera';
       btnCamera.classList.remove('btn-primary');
       btnCamera.classList.add('btn-secondary');
-      await codeReader.decodeFromVideoDevice(currentDeviceId, video, (result) => {
-        if (result) onScan(result.getText());
-      });
+      scanStatus.textContent = '📡 iniciando câmera...';
+
+      if (!scanner) {
+        const formats = getSupportedFormats();
+        scanner = new Html5Qrcode("reader", {
+          verbose: false,
+          formatsToSupport: formats,
+          useBarCodeDetectorIfSupported: true
+        });
+      }
+
+      const config = {
+        fps: 10,
+        aspectRatio: 1.333334,
+        disableFlip: true,
+        videoConstraints: { facingMode: { ideal: 'environment' } }
+      };
+
+      await scanner.start(
+        currentCameraId,
+        config,
+        (decodedText) => {
+          scanStatus.textContent = '✓ ' + decodedText;
+          onScan(decodedText);
+        },
+        () => { /* per-frame "not found" — ignore */ }
+      );
+      scanStatus.textContent = '📡 mire o código de barras';
     } catch (e) {
-      console.error(e);
-      toast('Erro câmera: ' + (e.message || e.name || 'permissão negada'), 'error');
-      stopCamera();
+      console.error('startCamera failed:', e);
+      toast('Erro câmera: ' + (e.message || e.name || 'falha ao iniciar'), 'error');
+      await stopCamera();
     }
   }
-  function stopCamera() {
-    if (codeReader) { try { codeReader.reset(); } catch {} }
+
+  async function stopCamera() {
+    if (scanner) {
+      try { if (scanner.isScanning) await scanner.stop(); } catch (e) { console.warn('stop:', e); }
+    }
     videoWrap.classList.remove('active');
     btnCamera.textContent = '📷 Iniciar câmera';
     btnCamera.classList.add('btn-primary');
     btnCamera.classList.remove('btn-secondary');
     btnFlip.style.display = 'none';
   }
+
   async function flipCamera() {
-    if (videoDevices.length < 2) return;
-    const idx = videoDevices.findIndex(d => d.deviceId === currentDeviceId);
-    currentDeviceId = videoDevices[(idx + 1) % videoDevices.length].deviceId;
-    if (codeReader) try { codeReader.reset(); } catch {}
-    await codeReader.decodeFromVideoDevice(currentDeviceId, video, (result) => {
-      if (result) onScan(result.getText());
-    });
+    if (cameras.length < 2) return;
+    const idx = cameras.findIndex(c => c.id === currentCameraId);
+    currentCameraId = cameras[(idx + 1) % cameras.length].id;
+    await stopCamera();
+    await startCamera();
   }
 
   // ---------- CSV ----------

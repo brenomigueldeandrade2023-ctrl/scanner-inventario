@@ -37,6 +37,10 @@
     --warn-border: #c08030;
     --danger: #d24a3e;
     --danger-bg: #2a1410;
+    --ai: #b76ae8;
+    --ai-2: #c98ef0;
+    --ai-dark: #8b4eb8;
+    --ai-glow: rgba(183, 106, 232, 0.18);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -590,6 +594,223 @@
     font-size: 18px;
   }
 
+  /* AI button + modal */
+  .btn-ai {
+    background: linear-gradient(135deg, var(--ai) 0%, var(--ai-dark) 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--ai-glow);
+    flex: 0 0 auto;
+    padding: 12px 14px;
+  }
+  .btn-ai:active { transform: scale(0.96); }
+
+  .ai-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.88);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+  .ai-modal[hidden] { display: none !important; }
+  .ai-modal-card {
+    background: var(--surface);
+    border: 1px solid var(--ai);
+    border-radius: 14px;
+    max-width: 480px;
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    box-shadow: 0 0 40px var(--ai-glow);
+  }
+  .ai-modal-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--ai-2);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 2;
+  }
+  .ai-modal-header button {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    font-size: 20px;
+    padding: 4px 8px;
+    min-height: auto;
+    cursor: pointer;
+  }
+  .ai-modal-body { padding: 14px 16px; }
+  .ai-preview {
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ai-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ai-preview.loading {
+    color: var(--ai-2);
+    font-size: 14px;
+    animation: pulseFade 1.4s ease-in-out infinite;
+  }
+  @keyframes pulseFade { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+  .ai-result {
+    background: rgba(183, 106, 232, 0.08);
+    border: 1px solid var(--ai-dark);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .ai-result-label {
+    font-size: 10px;
+    color: var(--ai-2);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .ai-result-text {
+    font-size: 16px;
+    color: var(--text);
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    line-height: 1.3;
+  }
+  .ai-matches-label {
+    font-size: 11px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .ai-matches-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .ai-match {
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    min-height: 48px;
+    color: var(--text);
+    font-family: inherit;
+    font-weight: 400;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .ai-match:active { background: var(--surface-2); border-color: var(--gold); }
+  .ai-match.top { border-color: var(--gold); background: rgba(212, 175, 106, 0.06); }
+  .ai-match .m-sku {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--gold);
+    display: block;
+  }
+  .ai-match .m-name { font-size: 14px; color: var(--text); display: block; }
+  .ai-match.top::before {
+    content: '★ ';
+    color: var(--gold);
+  }
+  .ai-no-match {
+    text-align: center;
+    padding: 14px;
+    color: var(--text-dim);
+    font-style: italic;
+    background: var(--bg);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* Settings panel */
+  .settings-toggle {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    padding: 8px 0;
+    font-size: 13px;
+    cursor: pointer;
+    min-height: auto;
+    width: 100%;
+    text-align: left;
+    font-weight: 500;
+  }
+  .settings-toggle::after {
+    content: '▾';
+    margin-left: auto;
+    transition: transform 0.15s;
+  }
+  .settings-toggle.open::after { transform: rotate(180deg); }
+  .settings-panel {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: none;
+  }
+  .settings-panel.open { display: block; }
+  .settings-field { margin-bottom: 10px; }
+  .settings-field:last-child { margin-bottom: 0; }
+  .settings-field label {
+    display: block;
+    font-size: 10px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .settings-field input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: ui-monospace, monospace;
+  }
+  .settings-field input:focus { outline: none; border-color: var(--ai); }
+  .settings-field .hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .settings-field .hint a { color: var(--gold); text-decoration: underline; }
+  .settings-status {
+    font-size: 11px;
+    color: var(--success);
+    margin-top: 4px;
+    font-weight: 600;
+  }
+  .settings-status.empty { color: var(--text-dim); font-weight: 400; font-style: italic; }
+
   /* Bottom bar */
   .bottom-bar {
     position: fixed;
@@ -673,7 +894,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner do Brenão</div>
-      <div class="brand-sub" id="brand-sub">Vânia Importados · v9</div>
+      <div class="brand-sub" id="brand-sub">Vânia Importados · v10</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -703,6 +924,7 @@
     </div>
     <div class="btn-row" style="margin-bottom: 10px;">
       <button id="btn-camera" class="btn-primary">📷 Iniciar câmera</button>
+      <button id="btn-ai" class="btn-ai" title="Identificar produto por foto (IA)">🧠 Foto IA</button>
       <button id="btn-flip" class="btn-secondary" style="flex: 0 0 auto; display: none;">🔄</button>
     </div>
     <div class="manual-entry">
@@ -773,11 +995,53 @@
     <div id="item-list"></div>
   </section>
 
+  <section>
+    <button id="settings-toggle" class="settings-toggle" type="button">
+      ⚙ Configurações
+    </button>
+    <div id="settings-panel" class="settings-panel">
+      <div class="settings-field">
+        <label for="gemini-key">Chave Gemini (Google AI)</label>
+        <input id="gemini-key" type="password" placeholder="AIza..." autocomplete="off">
+        <div class="settings-status empty" id="gemini-status">Sem chave configurada — feature 🧠 IA desativada</div>
+        <div class="hint">
+          Necessária pra identificar produtos por foto. Grátis em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a> (login Google, sem cartão). 1.500 fotos por dia.
+        </div>
+      </div>
+    </div>
+  </section>
+
   <div class="brand-footer">
     Vânia <span class="brand-footer-mark">·</span> Importados <span class="brand-footer-mark">·</span> Perfumaria
   </div>
 
 </main>
+
+<div id="ai-modal" class="ai-modal" hidden>
+  <div class="ai-modal-card">
+    <div class="ai-modal-header">
+      <span>🧠 Identificação por IA</span>
+      <button id="ai-close" type="button">✕</button>
+    </div>
+    <div class="ai-modal-body">
+      <div id="ai-preview" class="ai-preview loading">capturando foto...</div>
+      <div class="ai-result" id="ai-result" style="display: none;">
+        <div class="ai-result-label">Gemini identificou:</div>
+        <div class="ai-result-text" id="ai-result-text">—</div>
+      </div>
+      <div id="ai-matches-section" style="display: none;">
+        <div class="ai-matches-label">Top resultados do seu catálogo:</div>
+        <div id="ai-matches-list" class="ai-matches-list"></div>
+      </div>
+      <div id="ai-no-match" class="ai-no-match" style="display: none;">
+        Nenhum produto similar encontrado no catálogo.
+      </div>
+      <button id="ai-add-new" class="btn-warn btn-block" style="display: none;">
+        + Adicionar como produto novo (sem vínculo OLIST)
+      </button>
+    </div>
+  </div>
+</div>
 
 <div class="bottom-bar">
   <button id="btn-export" class="btn-primary">⬇ Balanço CSV</button>
@@ -797,8 +1061,14 @@
   const LS_CATALOG_OLD = 'inv_catalog_v1';
   const LS_CATALOG_META = 'inv_catalog_meta_v1';
   const LS_SESSION = 'inv_session_name_v1';
+  const LS_GEMINI_KEY = 'inv_gemini_key_v1';
+  const LS_SETTINGS_OPEN = 'inv_settings_open_v1';
   const SCAN_DEBOUNCE_MS = 1500;
   const SEARCH_LIMIT = 6;
+  const AI_MATCHES_TO_SHOW = 4;
+  const GEMINI_MODEL = 'gemini-2.5-flash';
+  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  const AI_PROMPT = 'Esta é uma foto da caixa ou frasco de um perfume. Geralmente são perfumes árabes/importados (marcas como Lattafa, Maison Alhambra, Paris Corner, Armaf, Al Haramain, Rasasi, Afnan, Swiss Arabian, Ajmal, etc). Responda APENAS o nome do perfume, marca e tamanho se visível na foto — formato: "Marca Nome Tamanho" (ex: "Lattafa Yara EDP 100ml", "Maison Alhambra Layali 100ml"). Nenhuma explicação. Se não conseguir identificar com confiança, responda exatamente: DESCONHECIDO';
 
   // ---------- State ----------
   let items = loadJSON(LS_ITEMS, []);
@@ -807,6 +1077,9 @@
   let skuIndex = new Map();
   let catalogMeta = loadJSON(LS_CATALOG_META, null);
   let sessionName = localStorage.getItem(LS_SESSION) || '';
+  let geminiKey = localStorage.getItem(LS_GEMINI_KEY) || '';
+  let aiInFlight = false;
+  let aiLastResult = null; // { text, matches, photoDataUrl }
   rebuildIndexes();
 
   let scanner = null;
@@ -855,6 +1128,20 @@
   const btnClear = $('btn-clear');
   const stats = $('stats');
   const toastEl = $('toast');
+  const btnAi = $('btn-ai');
+  const aiModal = $('ai-modal');
+  const aiClose = $('ai-close');
+  const aiPreview = $('ai-preview');
+  const aiResult = $('ai-result');
+  const aiResultText = $('ai-result-text');
+  const aiMatchesSection = $('ai-matches-section');
+  const aiMatchesList = $('ai-matches-list');
+  const aiNoMatch = $('ai-no-match');
+  const aiAddNew = $('ai-add-new');
+  const settingsToggle = $('settings-toggle');
+  const settingsPanel = $('settings-panel');
+  const geminiKeyInput = $('gemini-key');
+  const geminiStatus = $('gemini-status');
 
   // ---------- Persistence ----------
   function loadJSON(key, fallback) {
@@ -907,6 +1194,12 @@
   function slugify(s) {
     return normalizeKey(s).replace(/\s+/g, '-').slice(0, 40);
   }
+  function isSyntheticId(s) {
+    return typeof s === 'string' && (s.startsWith('ai:') || s.startsWith('sku:'));
+  }
+  function displayEan(s) {
+    return isSyntheticId(s) ? '—' : (s || '—');
+  }
 
   let audioCtx = null;
   async function ensureAudio() {
@@ -947,7 +1240,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v9';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v10';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1002,10 +1295,11 @@
         const linkBadge = (!it.sku && catalog.length > 0)
           ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
         const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} · ` : '';
+        const eanLabel = isSyntheticId(it.ean) ? (it.ean.startsWith('ai:') ? '🧠 IA' : '—') : `EAN: ${escapeHtml(it.ean)}`;
         div.innerHTML = `
           <div class="info">
             ${nameHtml}
-            <div class="meta">${skuHtml}EAN: ${escapeHtml(it.ean)} ${linkBadge}</div>
+            <div class="meta">${skuHtml}${eanLabel} ${linkBadge}</div>
           </div>
           <div class="qty-ctrl">
             <button data-act="dec">−</button>
@@ -1097,9 +1391,12 @@
     const unlinked = !item.sku && catalog.length > 0;
     lastScanBox.classList.toggle('unlinked', unlinked);
 
+    const eanLabel = isSyntheticId(ean)
+      ? (ean.startsWith('ai:') ? '🧠 identificado por IA' : 'via SKU')
+      : `EAN: ${escapeHtml(ean)}`;
     lsMeta.innerHTML = item.sku
-      ? `✓ <strong>${escapeHtml(item.sku)}</strong> · EAN: ${escapeHtml(ean)}`
-      : `EAN: ${escapeHtml(ean)}${catalog.length > 0 ? ' · sem SKU OLIST' : ''}`;
+      ? `✓ <strong>${escapeHtml(item.sku)}</strong> · ${eanLabel}`
+      : `${eanLabel}${catalog.length > 0 ? ' · sem SKU OLIST' : ''}`;
 
     if (unlinked) {
       lsLink.classList.add('show');
@@ -1173,6 +1470,252 @@
       saveItems();
     }
     return true;
+  }
+
+  // ---------- AI Vision (Gemini) ----------
+  function updateGeminiStatus() {
+    if (geminiKey) {
+      const last4 = geminiKey.slice(-4);
+      geminiStatus.textContent = `✓ Chave configurada (••••${last4})`;
+      geminiStatus.classList.remove('empty');
+      btnAi.style.opacity = '1';
+      btnAi.removeAttribute('disabled');
+    } else {
+      geminiStatus.textContent = 'Sem chave configurada — feature 🧠 IA desativada';
+      geminiStatus.classList.add('empty');
+      btnAi.style.opacity = '0.55';
+    }
+  }
+
+  function openSettings() {
+    settingsPanel.classList.add('open');
+    settingsToggle.classList.add('open');
+    localStorage.setItem(LS_SETTINGS_OPEN, '1');
+    setTimeout(() => geminiKeyInput.focus(), 100);
+  }
+  function closeSettings() {
+    settingsPanel.classList.remove('open');
+    settingsToggle.classList.remove('open');
+    localStorage.setItem(LS_SETTINGS_OPEN, '0');
+  }
+
+  async function captureFrame() {
+    const videoEl = document.querySelector('#reader video');
+    if (!videoEl || !videoEl.videoWidth) return null;
+    const canvas = document.createElement('canvas');
+    const maxW = 1024;
+    const scale = Math.min(1, maxW / videoEl.videoWidth);
+    canvas.width = Math.round(videoEl.videoWidth * scale);
+    canvas.height = Math.round(videoEl.videoHeight * scale);
+    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+
+  async function callGeminiVision(base64) {
+    const url = `${GEMINI_URL}?key=${encodeURIComponent(geminiKey)}`;
+    const body = {
+      contents: [{
+        parts: [
+          { text: AI_PROMPT },
+          { inline_data: { mime_type: 'image/jpeg', data: base64 } }
+        ]
+      }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 80 }
+    };
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      const err = new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+      err.status = resp.status;
+      throw err;
+    }
+    const data = await resp.json();
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    text = text.trim().replace(/^["'`]+|["'`.,]+$/g, '').trim();
+    return text;
+  }
+
+  async function identifyByPhoto() {
+    if (!geminiKey) {
+      openSettings();
+      toast('Configure a chave Gemini primeiro', 'warn');
+      return;
+    }
+    if (aiInFlight) return;
+
+    // Start camera if not already on
+    if (!videoWrap.classList.contains('active')) {
+      await startCamera();
+      // Wait briefly for video to have frames
+      await new Promise(r => setTimeout(r, 700));
+    }
+
+    const dataUrl = await captureFrame();
+    if (!dataUrl) {
+      toast('Câmera não está pronta — espere um instante', 'warn');
+      return;
+    }
+
+    aiInFlight = true;
+    showAiModalLoading(dataUrl);
+
+    try {
+      const base64 = dataUrl.split(',')[1];
+      const text = await callGeminiVision(base64);
+
+      if (!text || /^desconhecido/i.test(text)) {
+        aiLastResult = { text: 'Não identificado', matches: [], photoDataUrl: dataUrl };
+        showAiModalResult(aiLastResult, false);
+        return;
+      }
+
+      const matches = searchCatalog(text);
+      // Also try fallback search: split into words and try with most informative tokens
+      let extendedMatches = matches;
+      if (matches.length === 0) {
+        const tokens = normalizeKey(text).split(' ').filter(t => t.length > 2);
+        if (tokens.length > 0) {
+          // Try the first 2 tokens (usually brand + product)
+          const q = tokens.slice(0, 2).join(' ');
+          extendedMatches = searchCatalog(q);
+        }
+      }
+      aiLastResult = { text, matches: extendedMatches.slice(0, AI_MATCHES_TO_SHOW), photoDataUrl: dataUrl };
+      showAiModalResult(aiLastResult, true);
+    } catch (e) {
+      console.error('[ai] error:', e);
+      let msg = 'Erro IA: ';
+      if (e.status === 400) msg += 'chave inválida ou requisição mal formada';
+      else if (e.status === 403) msg += 'chave sem permissão (verifique no AI Studio)';
+      else if (e.status === 429) msg += 'limite atingido (aguarde alguns segundos)';
+      else if (e.status === 503) msg += 'Gemini sobrecarregado (tente de novo)';
+      else msg += (e.message || 'falha');
+      toast(msg, 'error');
+      hideAiModal();
+    } finally {
+      aiInFlight = false;
+    }
+  }
+
+  function showAiModalLoading(photoDataUrl) {
+    aiModal.hidden = false;
+    aiPreview.innerHTML = '';
+    if (photoDataUrl) {
+      aiPreview.classList.remove('loading');
+      const img = document.createElement('img');
+      img.src = photoDataUrl;
+      aiPreview.appendChild(img);
+    } else {
+      aiPreview.classList.add('loading');
+      aiPreview.textContent = 'capturando foto...';
+    }
+    aiResult.style.display = 'block';
+    aiResultText.textContent = 'identificando...';
+    aiMatchesSection.style.display = 'none';
+    aiNoMatch.style.display = 'none';
+    aiAddNew.style.display = 'none';
+  }
+
+  function showAiModalResult({ text, matches, photoDataUrl }, identified) {
+    aiPreview.classList.remove('loading');
+    if (photoDataUrl) {
+      aiPreview.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = photoDataUrl;
+      aiPreview.appendChild(img);
+    }
+    aiResult.style.display = 'block';
+    aiResultText.textContent = identified ? text : 'Não consegui identificar o produto';
+
+    if (identified && matches.length > 0) {
+      aiMatchesSection.style.display = 'block';
+      aiNoMatch.style.display = 'none';
+      aiMatchesList.innerHTML = matches.map((p, i) => `
+        <button class="ai-match ${i === 0 ? 'top' : ''}" data-sku="${escapeHtml(p.sku)}">
+          <span class="m-sku">${escapeHtml(p.sku)}${p.ean ? ' · EAN ' + escapeHtml(p.ean) : ''}</span>
+          <span class="m-name">${escapeHtml(p.name || '(sem nome)')}</span>
+        </button>
+      `).join('');
+    } else {
+      aiMatchesSection.style.display = 'none';
+      if (identified) {
+        aiNoMatch.style.display = 'block';
+        aiNoMatch.textContent = 'Nenhum produto similar no seu catálogo. Você pode adicionar como produto novo.';
+      } else {
+        aiNoMatch.style.display = 'block';
+        aiNoMatch.textContent = 'Tente outra foto com mais luz / sem reflexo / texto da marca visível. Ou use o barcode.';
+      }
+    }
+    // Always show "add new" button if AI got a text — gives user fallback
+    aiAddNew.style.display = identified ? 'block' : 'none';
+  }
+
+  function hideAiModal() {
+    aiModal.hidden = true;
+    aiLastResult = null;
+  }
+
+  function aiPickMatch(sku) {
+    if (!aiLastResult) return;
+    addBySku(sku);
+    hideAiModal();
+  }
+
+  function aiAddAsNew() {
+    if (!aiLastResult || !aiLastResult.text) return;
+    addUnknownWithName(aiLastResult.text);
+    hideAiModal();
+  }
+
+  // Add item by SKU (used by AI flow when matched to catalog)
+  function addBySku(sku) {
+    const prod = skuIndex.get(sku);
+    if (!prod) { toast('SKU não encontrado no catálogo', 'error'); return; }
+    // Use real EAN if known, else SKU-tagged identifier
+    const id = prod.ean || `sku:${prod.sku}`;
+    const existing = items.find(i => i.ean === id);
+    lastUndoableScan = { ean: id, wasNew: !existing, qtyBefore: existing ? existing.qty : 0 };
+    if (existing) {
+      existing.qty++;
+      if (!existing.sku) existing.sku = prod.sku;
+      if (!existing.name) existing.name = prod.name;
+    } else {
+      items.push({ ean: id, sku: prod.sku, name: prod.name, qty: 1 });
+    }
+    saveItems();
+    feedback(false);
+    render();
+    showLastScan(id, false);
+    toast(`+1 ${prod.name || prod.sku}`);
+  }
+
+  // Add unknown item with AI-suggested name
+  function addUnknownWithName(name) {
+    // Try to find existing unknown with same normalized name
+    const nameN = normalizeKey(name);
+    const existing = items.find(i => !i.sku && normalizeKey(i.name) === nameN);
+    if (existing) {
+      lastUndoableScan = { ean: existing.ean, wasNew: false, qtyBefore: existing.qty };
+      existing.qty++;
+      saveItems();
+      feedback(true);
+      render();
+      showLastScan(existing.ean, false);
+      toast(`+1 ${name}`);
+    } else {
+      const id = `ai:${slugify(name)}-${Date.now().toString(36)}`;
+      lastUndoableScan = { ean: id, wasNew: true, qtyBefore: 0 };
+      items.push({ ean: id, sku: '', name, qty: 1 });
+      saveItems();
+      feedback(true);
+      render();
+      showLastScan(id, false);
+      toast(`+ Novo: ${name}`);
+    }
   }
 
   // ---------- Camera (html5-qrcode) ----------
@@ -1496,13 +2039,18 @@
   function exportBalance() {
     if (items.length === 0) { toast('Lista vazia', 'warn'); return; }
     const lines = ['SKU;Quantidade'];
+    let exported = 0, skipped = 0;
     for (const it of items) {
+      // Skip items without real SKU AND without real EAN (only synthetic) — they go in "não vinculados"
+      if (!it.sku && isSyntheticId(it.ean)) { skipped++; continue; }
       const code = it.sku || it.ean;
       lines.push(`${csvEscape(code)};${Number(it.qty) || 0}`);
+      exported++;
     }
+    if (exported === 0) { toast('Nenhum item tem SKU/EAN válido pra balanço', 'warn'); return; }
     const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
     downloadCSV(`${exportPrefix()}balanco_${ts}.csv`, lines.join('\r\n'));
-    toast(`Balanço exportado: ${items.length} itens`);
+    toast(`Balanço: ${exported} itens${skipped > 0 ? ` · ${skipped} pulados (use "não vinculados")` : ''}`);
   }
 
   function exportEans() {
@@ -1523,7 +2071,8 @@
     const lines = ['EAN;Nome;Quantidade'];
     for (const it of unlinked) {
       const name = it.name || '(sem nome)';
-      lines.push(`${csvEscape(it.ean)};${csvEscape(name)};${Number(it.qty) || 0}`);
+      const ean = isSyntheticId(it.ean) ? '' : it.ean;
+      lines.push(`${csvEscape(ean)};${csvEscape(name)};${Number(it.qty) || 0}`);
     }
     const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
     downloadCSV(`${exportPrefix()}nao_vinculados_${ts}.csv`, lines.join('\r\n'));
@@ -1730,7 +2279,32 @@
     if (videoWrap.classList.contains('active')) stopCamera();
   });
 
+  // AI & settings handlers
+  btnAi.addEventListener('click', identifyByPhoto);
+  aiClose.addEventListener('click', hideAiModal);
+  aiModal.addEventListener('click', (e) => { if (e.target === aiModal) hideAiModal(); });
+  aiMatchesList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-sku]');
+    if (!btn) return;
+    aiPickMatch(btn.dataset.sku);
+  });
+  aiAddNew.addEventListener('click', aiAddAsNew);
+
+  settingsToggle.addEventListener('click', () => {
+    if (settingsPanel.classList.contains('open')) closeSettings();
+    else openSettings();
+  });
+  geminiKeyInput.addEventListener('input', () => {
+    geminiKey = geminiKeyInput.value.trim();
+    if (geminiKey) localStorage.setItem(LS_GEMINI_KEY, geminiKey);
+    else localStorage.removeItem(LS_GEMINI_KEY);
+    updateGeminiStatus();
+  });
+
   // ---------- Init ----------
+  geminiKeyInput.value = geminiKey;
+  updateGeminiStatus();
+  if (localStorage.getItem(LS_SETTINGS_OPEN) === '1' && !geminiKey) openSettings();
   render();
   if (!window.isSecureContext) toast('Atenção: câmera só funciona em HTTPS', 'warn');
 })();

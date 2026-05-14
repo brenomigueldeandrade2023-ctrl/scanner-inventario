@@ -899,6 +899,58 @@
     border-color: var(--gold-2);
     box-shadow: 0 0 0 2px var(--gold), 0 0 18px var(--gold-glow);
   }
+
+  /* ---------- Zoom slider (v20) ---------- */
+  .zoom-wrap {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(10, 8, 5, 0.65);
+    backdrop-filter: blur(6px);
+    border-radius: 10px;
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    border: 1px solid var(--border);
+  }
+  .zoom-wrap label {
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    min-width: 32px;
+    text-align: center;
+  }
+  .zoom-wrap input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 180px;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 4px;
+    outline: none;
+  }
+  .zoom-wrap input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 0 6px var(--gold-glow);
+  }
+  .zoom-wrap input[type="range"]::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    cursor: pointer;
+    border: 2px solid var(--surface);
+  }
 </style>
 </head>
 <body>
@@ -908,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v19</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v20</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -933,6 +985,10 @@
       </div>
       <div class="cam-controls">
         <button id="btn-torch" hidden title="Lanterna">🔦</button>
+      </div>
+      <div id="zoom-wrap" class="zoom-wrap">
+        <label id="zoom-label">1.0x</label>
+        <input id="zoom-slider" type="range" min="1" max="3" step="0.1" value="1">
       </div>
       <div id="scan-status">📡 detectando...</div>
     </div>
@@ -1142,6 +1198,9 @@
   const syncStatusDetail = $('sync-status-detail');
   const btnHidMode = $('btn-hid-mode');
   const hidStatusEl = $('hid-status');
+  const zoomWrap = $('zoom-wrap');
+  const zoomSlider = $('zoom-slider');
+  const zoomLabel = $('zoom-label');
 
   // ---------- Persistence ----------
   function loadJSON(key, fallback) {
@@ -1474,7 +1533,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v19';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v20';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1821,8 +1880,10 @@
         const rearAll = cameras.filter(c => /back|rear|traseira/i.test(c.label || ''));
         let chosen;
         if (rearAll.length > 0) {
-          chosen = rearAll.find(c => /triple/i.test(c.label || ''))
-                || rearAll.find(c => !/ultra|tele/i.test(c.label || ''))
+          // Prioridade: wide normal > primeira sem ultra/tele/zoom/macro > qualquer rear
+          // (ultra-wide tem foco fixo no infinito; tele/zoom tem foco mínimo distante — ambos ruins pra barcode)
+          chosen = rearAll.find(c => /\bwide\b/i.test(c.label || '') && !/ultra/i.test(c.label || ''))
+                || rearAll.find(c => !/ultra|tele|zoom|macro|depth/i.test(c.label || ''))
                 || rearAll[0];
         } else {
           chosen = cameras[cameras.length - 1];
@@ -1835,41 +1896,98 @@
 
       if (!scanner) {
         const formats = getSupportedFormats();
+        // useBarCodeDetectorIfSupported: usa engine nativo do Chrome (Google Lens) quando disponível
+        // — muito mais rápido e preciso que o decodificador WASM da lib.
         scanner = new Html5Qrcode("reader", {
           verbose: false,
           formatsToSupport: formats,
-          useBarCodeDetectorIfSupported: false
+          useBarCodeDetectorIfSupported: true,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true }
         });
       }
 
-      const config = { fps: 15, aspectRatio: 1.333334, disableFlip: true };
+      // qrbox horizontal: barcodes são wide, foco numa faixa no meio acelera detecção
+      const qrboxFn = (vw, vh) => {
+        const w = Math.floor(vw * 0.85);
+        const h = Math.floor(Math.min(vh * 0.35, w * 0.45));
+        return { width: w, height: h };
+      };
+      const config = {
+        fps: 25,
+        qrbox: qrboxFn,
+        aspectRatio: 1.7777,
+        disableFlip: true,
+        videoConstraints: {
+          deviceId: { exact: currentCameraId },
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
+          advanced: [{ focusMode: 'continuous' }]
+        }
+      };
       const onSuccess = (text) => { scanStatus.textContent = '✓ ' + text; onScan(text); };
       const onErr = () => {};
 
       try {
         await scanner.start(currentCameraId, config, onSuccess, onErr);
       } catch (e1) {
-        console.warn('[scanner] deviceId failed:', e1);
+        console.warn('[scanner] deviceId+constraints failed, retrying simpler:', e1);
         try { if (scanner.isScanning) await scanner.stop(); } catch {}
-        await scanner.start({ facingMode: 'environment' }, config, onSuccess, onErr);
+        try {
+          // Tenta sem advanced constraints (alguns Androids antigos quebram)
+          const simpleConfig = { fps: 25, qrbox: qrboxFn, aspectRatio: 1.7777, disableFlip: true };
+          await scanner.start(currentCameraId, simpleConfig, onSuccess, onErr);
+        } catch (e2) {
+          console.warn('[scanner] deviceId failed too, falling back to facingMode:', e2);
+          try { if (scanner.isScanning) await scanner.stop(); } catch {}
+          await scanner.start({ facingMode: 'environment' }, { fps: 25, qrbox: qrboxFn, aspectRatio: 1.7777, disableFlip: true }, onSuccess, onErr);
+        }
       }
 
       scanStatus.textContent = '📡 mire o código de barras';
 
-      // Check torch support and continuous focus
+      // Aplica torch + focus + tap-to-focus + zoom slider
       try {
         const videoEl = document.querySelector('#reader video');
         const track = videoEl && videoEl.srcObject && videoEl.srcObject.getVideoTracks()[0];
         if (track && track.getCapabilities) {
           const caps = track.getCapabilities();
+          // Torch
           if (caps.torch) {
             btnTorch.hidden = false;
             btnTorch.classList.toggle('active', torchOn);
           } else {
             btnTorch.hidden = true;
           }
+          // Continuous autofocus
           if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
-            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+          }
+          // Zoom slider (se a câmera suporta)
+          if (caps.zoom && typeof caps.zoom.max === 'number' && caps.zoom.max > caps.zoom.min) {
+            zoomSlider.min = caps.zoom.min;
+            zoomSlider.max = caps.zoom.max;
+            zoomSlider.step = caps.zoom.step || 0.1;
+            zoomSlider.value = track.getSettings().zoom || caps.zoom.min;
+            zoomWrap.style.display = 'flex';
+            zoomSlider.oninput = async () => {
+              try { await track.applyConstraints({ advanced: [{ zoom: Number(zoomSlider.value) }] }); } catch (e) { console.warn('zoom:', e); }
+              zoomLabel.textContent = Number(zoomSlider.value).toFixed(1) + 'x';
+            };
+            zoomLabel.textContent = Number(zoomSlider.value).toFixed(1) + 'x';
+          } else {
+            zoomWrap.style.display = 'none';
+          }
+          // Tap-to-focus: toca em qualquer ponto do vídeo pra forçar autofocus naquela área
+          if (videoEl && caps.focusMode && caps.focusMode.includes('single-shot')) {
+            videoEl.style.cursor = 'crosshair';
+            videoEl.onclick = async () => {
+              try {
+                await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+                setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(()=>{}), 800);
+              } catch (e) { console.warn('tap-focus:', e); }
+            };
           }
         }
       } catch (e) { console.warn('[scanner] caps tweak:', e); }
@@ -1889,6 +2007,7 @@
     btnFlip.style.display = 'none';
     btnTorch.hidden = true;
     torchOn = false;
+    if (zoomWrap) zoomWrap.style.display = 'none';
   }
 
   async function flipCamera() {

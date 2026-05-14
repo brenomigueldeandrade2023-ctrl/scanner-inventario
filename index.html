@@ -1414,8 +1414,16 @@
       return produtos.length;
     } catch (err) {
       console.warn('[catalog]', err);
-      setWorkerStatus('offline', err.message);
-      toast('⚠ Catálogo offline: ' + err.message, 'warn');
+      const m = (err.message || '').toLowerCase();
+      // Erros específicos do Tiny rate-limit — não tratar como "offline" porque
+      // o Worker tá ok, só o Tiny está temporariamente bloqueando.
+      if (m.includes('excedido') || m.includes('api bloqueada') || m.includes('bloqueada')) {
+        setWorkerStatus('syncing', 'Tiny temporariamente lento, tente em 1-2 min');
+        toast('⏳ Tiny limitou consultas. Você pode continuar bipando — sync rola quando voltar.', 'warn');
+      } else {
+        setWorkerStatus('offline', err.message);
+        toast('⚠ Catálogo offline: ' + err.message, 'warn');
+      }
       render();
       return 0;
     }

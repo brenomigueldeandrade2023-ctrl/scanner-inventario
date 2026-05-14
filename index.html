@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v22</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v23</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1653,7 +1653,7 @@
     fetchCatalogFromWorker({ fresh: true }).catch(()=>{});
     render();
     if (fail === 0) {
-      toast(`✨ ${ok} rascunho(s) criado(s) no site · estoque subindo...`);
+      toast(`✨ ${ok} produto(s) criado(s) · 🪄 publicando no site automático...`);
     } else {
       toast(`✨ ${ok} criado(s) · ⚠ ${fail} falhou(aram) — ${erros[0] || ''}`, 'warn');
     }
@@ -1681,7 +1681,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v22';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v23';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();

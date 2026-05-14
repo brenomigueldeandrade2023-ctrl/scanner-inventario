@@ -908,7 +908,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v18</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v19</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1320,15 +1320,31 @@
       };
       saveCatalog();
       rebuildIndexes();
-      // backfill items já bipados que tinham SKU sem nome ou EAN sem SKU
+      // Backfill items já bipados que tinham EAN sem SKU (ex: produtos recém-cadastrados via chat)
+      // Quando o item ganha SKU pela primeira vez, enfileira auto-sync pro saldo subir pro OLIST.
       let backfilled = 0;
+      let autoQueued = 0;
       for (const it of items) {
         if (it.ean) {
           const p = eanIndex.get(it.ean);
-          if (p && !it.sku) { it.sku = p.sku; it.name = it.name || p.name; backfilled++; }
+          if (p && !it.sku) {
+            it.sku = p.sku;
+            it.name = it.name || p.name;
+            if (it.synced_qty === undefined) it.synced_qty = 0;
+            if ((Number(it.qty) || 0) > 0) {
+              it.sync_status = 'pending';
+              pendingSyncs.add(p.sku);
+              autoQueued++;
+            }
+            backfilled++;
+          }
         }
       }
       if (backfilled > 0) saveItems();
+      if (autoQueued > 0) {
+        toast(`✨ ${autoQueued} produto(s) novo(s) vinculado(s) · sincronizando saldo...`);
+        if (!syncTimer && !syncInFlight) syncTimer = setTimeout(flushSync, 400);
+      }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
       return produtos.length;
@@ -1458,7 +1474,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v18';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v19';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();

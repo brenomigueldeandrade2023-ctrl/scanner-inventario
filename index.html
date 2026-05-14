@@ -2302,17 +2302,55 @@
   });
 
   // ---------- Init ----------
-  // Magic-link: ?key=AIza... → saves to localStorage and cleans URL
+  // Magic-link: ?key=AIza... → saves Gemini key to localStorage and cleans URL
+  // Magic-link: ?synced=BASE64(sku1|ean1,sku2|ean2,...) → marks EANs as synced with OLIST
   try {
     const urlParams = new URLSearchParams(window.location.search);
+
     const urlKey = urlParams.get('key') || urlParams.get('gemini');
     if (urlKey && /^AIza[\w-]{30,}$/.test(urlKey)) {
       geminiKey = urlKey;
       localStorage.setItem(LS_GEMINI_KEY, geminiKey);
+      setTimeout(() => toast('✓ Chave Gemini salva — feature IA pronta'), 300);
+    }
+
+    const syncedParam = urlParams.get('synced');
+    if (syncedParam) {
+      try {
+        const decoded = atob(syncedParam.replace(/-/g, '+').replace(/_/g, '/'));
+        const pairs = decoded.split(',').map(s => {
+          const [sku, ean] = s.split('|');
+          return { sku: (sku || '').trim(), ean: (ean || '').trim() };
+        }).filter(p => p.sku && p.ean);
+        let synced = 0, missingSkus = [];
+        for (const { sku, ean } of pairs) {
+          const p = skuIndex.get(sku);
+          if (p) {
+            // OLIST is now source of truth: ean is current, _origEan = ean (not "newly linked" anymore)
+            if (p.ean && p.ean !== ean) eanIndex.delete(p.ean);
+            p.ean = ean;
+            p._origEan = ean;
+            eanIndex.set(ean, p);
+            synced++;
+          } else {
+            missingSkus.push(sku);
+          }
+        }
+        if (synced > 0) {
+          saveCatalog();
+          let msg = `✓ ${synced} EAN${synced > 1 ? 's' : ''} sincronizado${synced > 1 ? 's' : ''} com OLIST`;
+          if (missingSkus.length > 0) msg += ` · ⚠ ${missingSkus.length} SKU(s) não estão no catálogo local`;
+          setTimeout(() => toast(msg), 300);
+        } else if (missingSkus.length > 0) {
+          setTimeout(() => toast(`⚠ Sync recebido mas ${missingSkus.length} SKU(s) não estão no catálogo — reimporte do OLIST`, 'warn'), 300);
+        }
+      } catch (e) { console.warn('[sync] parse failed:', e); }
+    }
+
+    if (urlKey || syncedParam) {
       if (window.history && window.history.replaceState) {
         window.history.replaceState({}, '', window.location.pathname);
       }
-      setTimeout(() => toast('✓ Chave Gemini salva — feature IA pronta'), 300);
     }
   } catch {}
   geminiKeyInput.value = geminiKey;

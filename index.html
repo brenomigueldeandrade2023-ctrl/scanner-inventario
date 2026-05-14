@@ -736,6 +736,7 @@
     z-index: 10;
   }
   .bottom-bar > * { flex: 1; }
+  .bottom-bar #btn-clear { flex: 0 0 auto; }
 
   /* Toast */
   #toast {
@@ -795,6 +796,60 @@
     main { padding: 16px; }
     section { padding: 18px; }
   }
+
+  /* ---------- Sync indicators (v16) ---------- */
+  .sync-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 8px;
+    background: var(--text-dim);
+    vertical-align: middle;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  .sync-indicator.online { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .sync-indicator.syncing { background: var(--gold); box-shadow: 0 0 6px var(--gold); animation: pulse-sync 1s ease-in-out infinite; }
+  .sync-indicator.offline { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+  @keyframes pulse-sync {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .sync-bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 0 4px;
+    min-width: 0;
+  }
+  #sync-status-text { font-weight: 600; color: var(--text); white-space: nowrap; }
+  #sync-status-text.synced { color: var(--success); }
+  #sync-status-text.pending { color: var(--gold); }
+  #sync-status-text.error { color: var(--danger); }
+  #sync-status-detail { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+  .item-sync {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 6px;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .item-sync.synced { background: var(--success-bg); color: var(--success); }
+  .item-sync.pending { background: var(--warn-bg); color: var(--warn); }
+  .item-sync.syncing { background: rgba(212,175,106,0.12); color: var(--gold); }
+  .item-sync.error { background: var(--danger-bg); color: var(--danger); cursor: help; }
+  .item-sync.nolink { background: transparent; color: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -804,7 +859,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v15</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v16</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -905,28 +960,21 @@
   </section>
 
   <section>
-    <h2>Catálogo OLIST</h2>
+    <h2>Catálogo OLIST <span id="sync-indicator" class="sync-indicator" title="status sync">●</span></h2>
     <div class="catalog-row">
       <div class="info">
         <strong id="catalog-count">0</strong> produtos
         <span id="linked-count" class="linked-count"></span>
         <div id="catalog-meta" style="font-size: 11px; color: var(--text-dim); margin-top: 2px;"></div>
       </div>
-      <button id="btn-import-catalog" class="btn-secondary">Importar CSV</button>
+      <button id="btn-refresh-catalog" class="btn-secondary">🔄 Atualizar</button>
     </div>
-    <button id="btn-export-eans" class="btn-secondary btn-block" style="display: none; margin-top: 10px;">
-      🏷 EANs vinculados
-    </button>
-    <button id="btn-export-unlinked" class="btn-secondary btn-block" style="display: none; margin-top: 6px;">
+    <button id="btn-export-unlinked" class="btn-secondary btn-block" style="display: none; margin-top: 10px;">
       📋 Não vinculados
     </button>
     <button id="btn-export-cadastros" class="btn-warn btn-block" style="display: none; margin-top: 6px;">
       📦 Cadastrar novos
     </button>
-    <button id="btn-clear-catalog" class="btn-ghost" style="display: none; margin-top: 6px; font-size: 12px; width: 100%; text-decoration: underline;">
-      Limpar catálogo
-    </button>
-    <input type="file" id="file-catalog" accept=".csv,text/csv" multiple>
   </section>
 
   <section>
@@ -941,7 +989,10 @@
 </main>
 
 <div class="bottom-bar">
-  <button id="btn-export" class="btn-primary">⬇ Balanço CSV</button>
+  <div id="sync-status-bar" class="sync-bar">
+    <span id="sync-status-text">✓ Sincronizado</span>
+    <span id="sync-status-detail"></span>
+  </div>
   <button id="btn-clear" class="btn-danger">🗑 Limpar</button>
 </div>
 
@@ -953,12 +1004,15 @@
   'use strict';
 
   // ---------- Constants ----------
+  const WORKER_URL = 'https://scanner-worker.brenomigueldeandrade2023.workers.dev';
   const LS_ITEMS = 'inv_items_v1';
   const LS_CATALOG = 'inv_catalog_v2';
   const LS_CATALOG_OLD = 'inv_catalog_v1';
   const LS_CATALOG_META = 'inv_catalog_meta_v1';
   const LS_SESSION = 'inv_session_name_v1';
   const SCAN_DEBOUNCE_MS = 1500;
+  const SYNC_DEBOUNCE_MS = 1200;
+  const SYNC_RETRY_MS = 8000;
   const SEARCH_LIMIT = 6;
 
   // ---------- State ----------
@@ -980,6 +1034,11 @@
   let lastUndoableScan = null; // {ean, wasNew, qtyBefore}
   let listFilter = '';
   let torchOn = false;
+  // Sync state (v16 Worker integration)
+  let workerOnline = false;
+  let pendingSyncs = new Set();   // SKUs aguardando flush
+  let syncTimer = null;            // debounce handle
+  let syncInFlight = false;        // mutex pra evitar paralelismo
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
@@ -1014,16 +1073,16 @@
   const catalogCount = $('catalog-count');
   const linkedCountEl = $('linked-count');
   const catalogMetaEl = $('catalog-meta');
-  const btnImport = $('btn-import-catalog');
-  const btnExportEans = $('btn-export-eans');
-  const fileCatalog = $('file-catalog');
+  const btnRefreshCatalog = $('btn-refresh-catalog');
   const itemList = $('item-list');
   const listSearchEl = $('list-search');
   const warnNoSku = $('warn-no-sku');
-  const btnExport = $('btn-export');
   const btnClear = $('btn-clear');
   const stats = $('stats');
   const toastEl = $('toast');
+  const syncIndicator = $('sync-indicator');
+  const syncStatusText = $('sync-status-text');
+  const syncStatusDetail = $('sync-status-detail');
 
   // ---------- Persistence ----------
   function loadJSON(key, fallback) {
@@ -1121,6 +1180,183 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
+  // ---------- Worker sync (v16) ----------
+  function setWorkerStatus(state, detail) {
+    workerOnline = (state === 'online' || state === 'syncing');
+    syncIndicator.className = 'sync-indicator ' + state;
+    syncIndicator.title = detail || state;
+  }
+
+  function updateSyncStatusBar() {
+    const itemsWithSku = items.filter(i => i.sku);
+    const dirty = itemsWithSku.filter(i => (Number(i.qty) || 0) !== (Number(i.synced_qty) || 0));
+    const errored = itemsWithSku.filter(i => i.sync_status === 'error');
+    const syncing = itemsWithSku.filter(i => i.sync_status === 'syncing');
+
+    if (!workerOnline) {
+      syncStatusText.className = 'error';
+      syncStatusText.textContent = '⚠ Offline';
+      syncStatusDetail.textContent = pendingSyncs.size > 0 ? `${pendingSyncs.size} pendente(s)` : 'Worker indisponível';
+      return;
+    }
+    if (errored.length > 0) {
+      syncStatusText.className = 'error';
+      syncStatusText.textContent = `⚠ ${errored.length} com erro`;
+      syncStatusDetail.textContent = errored[0].sync_error || 'verifique conexão';
+      return;
+    }
+    if (syncing.length > 0 || pendingSyncs.size > 0) {
+      syncStatusText.className = 'pending';
+      syncStatusText.textContent = `⏳ Sincronizando…`;
+      const total = syncing.length + pendingSyncs.size;
+      syncStatusDetail.textContent = `${total} item(s)`;
+      return;
+    }
+    if (dirty.length > 0) {
+      syncStatusText.className = 'pending';
+      syncStatusText.textContent = `⏳ ${dirty.length} pendente(s)`;
+      syncStatusDetail.textContent = '';
+      return;
+    }
+    syncStatusText.className = 'synced';
+    syncStatusText.textContent = '✓ Tudo sincronizado';
+    const syncedItems = itemsWithSku.filter(i => i.sync_status === 'synced').length;
+    syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
+  }
+
+  async function workerFetch(path, opts = {}) {
+    const url = WORKER_URL + path;
+    const init = {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    };
+    if (opts.body) init.body = JSON.stringify(opts.body);
+    const res = await fetch(url, init);
+    let data;
+    try { data = await res.json(); } catch { data = { ok: false, error: 'invalid json from worker' }; }
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  async function fetchCatalogFromWorker(opts = {}) {
+    const fresh = opts.fresh ? '?fresh=1' : '';
+    setWorkerStatus('syncing', 'Carregando catálogo do OLIST...');
+    try {
+      const data = await workerFetch('/produtos' + fresh);
+      const produtos = (data.produtos || []).map(p => ({
+        sku: String(p.sku || '').trim(),
+        name: String(p.nome || '').trim(),
+        ean: String(p.gtin || '').trim(),
+        _origEan: String(p.gtin || '').trim(),
+        id: p.id,
+        preco: p.preco,
+      })).filter(p => p.sku);
+      catalog = produtos;
+      catalogMeta = {
+        filename: data.cached ? 'OLIST (cached)' : 'OLIST live',
+        importedAt: data.fetched_at || new Date().toISOString(),
+        source: 'worker',
+      };
+      saveCatalog();
+      rebuildIndexes();
+      // backfill items já bipados que tinham SKU sem nome ou EAN sem SKU
+      let backfilled = 0;
+      for (const it of items) {
+        if (it.ean) {
+          const p = eanIndex.get(it.ean);
+          if (p && !it.sku) { it.sku = p.sku; it.name = it.name || p.name; backfilled++; }
+        }
+      }
+      if (backfilled > 0) saveItems();
+      setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
+      render();
+      return produtos.length;
+    } catch (err) {
+      console.warn('[catalog]', err);
+      setWorkerStatus('offline', err.message);
+      toast('⚠ Catálogo offline: ' + err.message, 'warn');
+      render();
+      return 0;
+    }
+  }
+
+  function queueSync(sku) {
+    if (!sku) return;
+    pendingSyncs.add(sku);
+    const item = items.find(i => i.sku === sku);
+    if (item) {
+      item.sync_status = 'pending';
+      saveItems();
+    }
+    updateSyncStatusBar();
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
+  }
+
+  async function flushSync() {
+    if (syncInFlight) return;
+    if (pendingSyncs.size === 0) { updateSyncStatusBar(); return; }
+    syncInFlight = true;
+    const toFlush = Array.from(pendingSyncs);
+    pendingSyncs.clear();
+
+    for (const sku of toFlush) {
+      const item = items.find(i => i.sku === sku);
+      if (!item) continue;
+      const targetQty = Number(item.qty) || 0;
+      const syncedQty = Number(item.synced_qty) || 0;
+      const delta = targetQty - syncedQty;
+      if (delta === 0) {
+        item.sync_status = 'synced';
+        continue;
+      }
+      item.sync_status = 'syncing';
+      saveItems();
+      updateSyncStatusBar();
+      render();
+      try {
+        const note = sessionName ? `[${sessionName}] Scanner ${delta > 0 ? 'entrada' : 'saída'} ${Math.abs(delta)} un` : undefined;
+        const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note } });
+        item.synced_qty = targetQty;
+        item.sync_status = 'synced';
+        item.sync_error = null;
+        item.saldo_olist = result.saldo;
+        setWorkerStatus('online', `+${delta} ${sku} · saldo ${result.saldo}`);
+      } catch (err) {
+        console.warn('[sync]', sku, err);
+        item.sync_status = 'error';
+        item.sync_error = err.message;
+        pendingSyncs.add(sku); // requeue
+        setWorkerStatus('offline', err.message);
+        // backoff: retry depois
+        setTimeout(() => {
+          if (pendingSyncs.size > 0 && !syncInFlight) flushSync();
+        }, SYNC_RETRY_MS);
+        break; // não martela em erro de rede
+      }
+      saveItems();
+    }
+    syncInFlight = false;
+    updateSyncStatusBar();
+    render();
+    if (pendingSyncs.size > 0 && !syncTimer) {
+      syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
+    }
+  }
+
+  async function vincularRemote(sku, ean) {
+    try {
+      await workerFetch('/vincular', { method: 'POST', body: { sku, ean } });
+      return true;
+    } catch (err) {
+      console.warn('[vincular]', err);
+      toast('⚠ Vincular falhou: ' + err.message, 'warn');
+      return false;
+    }
+  }
+
   function countNewlyLinked() {
     return catalog.filter(p => p.ean && p.ean !== (p._origEan || '')).length;
   }
@@ -1132,24 +1368,16 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v15';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v16';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
-    if (newlyLinked > 0) {
-      linkedCountEl.textContent = ` · +${newlyLinked} novos EANs`;
-      btnExportEans.style.display = 'block';
-      btnExportEans.textContent = `🏷 EANs vinculados (${newlyLinked})`;
-    } else {
-      linkedCountEl.textContent = '';
-      btnExportEans.style.display = 'none';
-    }
-    $('btn-clear-catalog').style.display = catalog.length > 0 ? 'block' : 'none';
+    linkedCountEl.textContent = newlyLinked > 0 ? ` · +${newlyLinked} novos EANs` : '';
     if (catalogMeta) {
       const d = new Date(catalogMeta.importedAt);
       catalogMetaEl.textContent = `${catalogMeta.filename} · ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
     } else {
-      catalogMetaEl.textContent = 'Importe o CSV de produtos do OLIST';
+      catalogMetaEl.textContent = 'Carregando catálogo do OLIST...';
     }
 
     const noSkuItems = items.filter(i => !i.sku);
@@ -1196,6 +1424,22 @@
         const nameHtml = `<input type="text" class="name ${it.name ? '' : 'unknown'}" data-act="name" value="${escapeHtml(it.name)}" placeholder="Sem nome — toque pra digitar" autocomplete="off" autocapitalize="words">`;
         const linkBadge = (!it.sku && catalog.length > 0)
           ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
+        let syncBadge = '';
+        if (it.sku) {
+          const tgt = Number(it.qty) || 0;
+          const synced = Number(it.synced_qty) || 0;
+          if (it.sync_status === 'error') {
+            syncBadge = `<span class="item-sync error" title="${escapeHtml(it.sync_error || 'erro')}">⚠ erro</span>`;
+          } else if (it.sync_status === 'syncing') {
+            syncBadge = `<span class="item-sync syncing">⏳ enviando</span>`;
+          } else if (tgt !== synced) {
+            syncBadge = `<span class="item-sync pending">⏳ pendente</span>`;
+          } else if (synced > 0) {
+            syncBadge = `<span class="item-sync synced">✓ ${synced} no OLIST</span>`;
+          }
+        } else {
+          syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
+        }
         const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} · ` : '';
         const eanLabel = isSyntheticId(it.ean) ? (it.ean.startsWith('ai:') ? '🧠 IA' : '—') : `EAN: ${escapeHtml(it.ean)}`;
         let priceHtml = '';
@@ -1207,7 +1451,7 @@
         div.innerHTML = `
           <div class="info">
             ${nameHtml}
-            <div class="meta">${priceHtml}${skuHtml}${eanLabel} ${linkBadge}</div>
+            <div class="meta">${priceHtml}${skuHtml}${eanLabel} ${linkBadge} ${syncBadge}</div>
           </div>
           <div class="qty-ctrl">
             <button data-act="dec">−</button>
@@ -1219,6 +1463,7 @@
         itemList.appendChild(div);
       }
     }
+    updateSyncStatusBar();
   }
 
   // ---------- Scan handling ----------
@@ -1254,10 +1499,13 @@
         ean,
         sku: prod ? prod.sku : '',
         name: prod ? prod.name : '',
-        qty: 1
+        qty: 1,
+        synced_qty: 0,
+        sync_status: prod ? 'pending' : 'idle',
       });
     }
     saveItems();
+    if (prod) queueSync(prod.sku);
 
     feedback(!prod);
     render();
@@ -1293,7 +1541,8 @@
     const { ean, wasNew, qtyBefore } = lastUndoableScan;
     const idx = items.findIndex(i => i.ean === ean);
     if (idx === -1) { toast('Item já não está na lista', 'warn'); lastUndoableScan = null; return; }
-    if (wasNew) {
+    const sku = items[idx].sku;
+    if (wasNew && (Number(items[idx].synced_qty) || 0) === 0) {
       items.splice(idx, 1);
       toast('Bipe desfeito (item removido)');
     } else {
@@ -1306,6 +1555,7 @@
     lastScanBox.classList.remove('show');
     activeEan = null;
     render();
+    if (sku) queueSync(sku); // dispara saída -1 pro OLIST
   }
 
   function showLastScan(ean, focusFirst) {
@@ -1395,7 +1645,17 @@
     if (item) {
       item.sku = p.sku;
       item.name = p.name;
+      if (item.synced_qty === undefined) item.synced_qty = 0;
+      item.sync_status = 'pending';
       saveItems();
+      // Persiste vínculo no Tiny em background, depois enfileira o sync de estoque
+      vincularRemote(sku, ean).then(ok => {
+        if (ok) {
+          p._origEan = ean; // marca como já no Tiny
+          saveCatalog();
+          queueSync(sku);
+        }
+      });
     }
     return true;
   }
@@ -1827,16 +2087,9 @@
     if (e.key === 'Enter') { e.preventDefault(); btnManualAdd.click(); }
   });
 
-  btnImport.addEventListener('click', () => fileCatalog.click());
-  fileCatalog.addEventListener('change', (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) importCatalogs(files);
-    fileCatalog.value = '';
-  });
-  btnExportEans.addEventListener('click', exportEans);
+  btnRefreshCatalog.addEventListener('click', () => fetchCatalogFromWorker({ fresh: true }));
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
   $('btn-export-cadastros').addEventListener('click', exportNovosCadastros);
-  $('btn-clear-catalog').addEventListener('click', clearCatalog);
 
   listSearchEl.addEventListener('input', () => {
     listFilter = listSearchEl.value;
@@ -1859,21 +2112,37 @@
     const idx = Number(row.dataset.idx);
     const act = btn.dataset.act;
     if (act === 'inc') {
+      const sku = items[idx].sku;
       items[idx].qty = (Number(items[idx].qty) || 0) + 1;
       saveItems(); render();
+      if (sku) queueSync(sku);
       if (activeEan === items[idx].ean) showLastScan(activeEan, false);
     } else if (act === 'dec') {
+      const sku = items[idx].sku;
       items[idx].qty = (Number(items[idx].qty) || 0) - 1;
       if (items[idx].qty <= 0) {
         if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
-        items.splice(idx, 1);
+        items[idx].qty = 0; // mantém na lista pra permitir saída até o synced_qty
+        if ((Number(items[idx].synced_qty) || 0) === 0) {
+          items.splice(idx, 1);
+        }
       }
       saveItems(); render();
+      if (sku) queueSync(sku);
       if (activeEan && items.find(i => i.ean === activeEan)) showLastScan(activeEan, false);
     } else if (act === 'remove') {
-      if (confirm(`Remover "${items[idx].name || items[idx].ean}" da lista?`)) {
+      if (confirm(`Remover "${items[idx].name || items[idx].ean}" da lista?\nObs: não desfaz movimentos já sincronizados no OLIST.`)) {
         if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
-        items.splice(idx, 1); saveItems(); render();
+        const it = items[idx];
+        // Se já tinha sincronizado N unidades, gera saída -N pra zerar
+        if (it.sku && (Number(it.synced_qty) || 0) > 0) {
+          it.qty = 0;
+          saveItems();
+          queueSync(it.sku);
+        } else {
+          items.splice(idx, 1); saveItems();
+        }
+        render();
       }
     }
   });
@@ -1884,11 +2153,17 @@
     const idx = Number(row.dataset.idx);
     if (e.target.matches('input[data-act="edit"]')) {
       const v = parseInt(e.target.value, 10);
-      if (isNaN(v) || v <= 0) {
+      const sku = items[idx].sku;
+      if (isNaN(v) || v < 0) {
+        items[idx].qty = items[idx].qty; // ignora valor inválido
+      } else if (v === 0 && (Number(items[idx].synced_qty) || 0) === 0) {
         if (activeEan === items[idx].ean) { lastScanBox.classList.remove('show'); activeEan = null; }
         items.splice(idx, 1);
-      } else { items[idx].qty = v; }
+      } else {
+        items[idx].qty = v;
+      }
       saveItems(); render();
+      if (sku) queueSync(sku);
       if (activeEan && items.find(i => i.ean === activeEan)) showLastScan(activeEan, false);
     } else if (e.target.matches('input[data-act="name"]')) {
       items[idx].name = e.target.value.trim();
@@ -1928,7 +2203,11 @@
     const item = items.find(i => i.ean === activeEan);
     if (!item) return;
     const v = parseInt(lsQtyInput.value, 10);
-    if (!isNaN(v) && v > 0) { item.qty = v; saveItems(); render(); }
+    if (!isNaN(v) && v > 0) {
+      item.qty = v;
+      saveItems(); render();
+      if (item.sku) queueSync(item.sku);
+    }
   });
   lsQtyInput.addEventListener('blur', () => {
     if (!activeEan) return;
@@ -1947,13 +2226,15 @@
     item.qty = (Number(item.qty) || 0) + 1;
     saveItems(); render();
     lsQtyInput.value = item.qty;
+    if (item.sku) queueSync(item.sku);
   });
   lsQtyDec.addEventListener('click', () => {
     if (!activeEan) return;
     const item = items.find(i => i.ean === activeEan);
     if (!item) return;
-    item.qty = (Number(item.qty) || 0) - 1;
-    if (item.qty <= 0) {
+    const sku = item.sku;
+    item.qty = Math.max(0, (Number(item.qty) || 0) - 1);
+    if (item.qty === 0 && (Number(item.synced_qty) || 0) === 0) {
       const idx = items.findIndex(i => i.ean === activeEan);
       if (idx !== -1) items.splice(idx, 1);
       lastScanBox.classList.remove('show');
@@ -1962,6 +2243,7 @@
       lsQtyInput.value = item.qty;
     }
     saveItems(); render();
+    if (sku) queueSync(sku);
   });
 
   function bindPriceInput(el, field) {
@@ -2008,11 +2290,16 @@
     }
   });
 
-  btnExport.addEventListener('click', exportBalance);
   btnClear.addEventListener('click', () => {
     if (items.length === 0) { toast('Lista já está vazia', 'warn'); return; }
-    if (confirm(`Limpar todos os ${items.length} itens escaneados?\nO catálogo OLIST e os EANs vinculados serão mantidos.`)) {
+    const pending = items.filter(i => (Number(i.qty) || 0) !== (Number(i.synced_qty) || 0)).length;
+    const msg = pending > 0
+      ? `Limpar ${items.length} itens?\n⚠ ${pending} ainda não sincronizou(aram) — esses movimentos NÃO subirão pro OLIST.\nO catálogo é mantido.`
+      : `Limpar ${items.length} itens já sincronizados?\nMovimentos no OLIST permanecem; o catálogo é mantido.`;
+    if (confirm(msg)) {
       items = [];
+      pendingSyncs.clear();
+      if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
       saveItems();
       lastScanBox.classList.remove('show');
       activeEan = null;
@@ -2027,71 +2314,57 @@
   });
 
   // ---------- Init ----------
+  // Normaliza items legados (pré-v16) que não tinham synced_qty/sync_status
+  let migrated = 0;
+  for (const it of items) {
+    if (it.synced_qty === undefined) { it.synced_qty = 0; migrated++; }
+    if (it.sync_status === undefined) { it.sync_status = it.sku ? 'idle' : 'idle'; }
+    if (it.sync_status === 'syncing') { it.sync_status = 'pending'; } // session morreu mid-sync
+  }
+  if (migrated > 0) saveItems();
+
+  setWorkerStatus('syncing', 'Conectando ao Worker...');
   render();
   if (!window.isSecureContext) toast('Atenção: câmera só funciona em HTTPS', 'warn');
 
-  // Auto-sync from synced.json (OLIST source-of-truth)
-  // v2 format: entries[sku] = { ean, name }  |  v1: entries[sku] = "ean"
-  async function autoSyncFromServer() {
+  // Boot: busca catálogo fresco do Worker (substitui CSV import + synced.json)
+  fetchCatalogFromWorker({ fresh: false }).then(count => {
+    if (count > 0) {
+      // Reenfileira items que estavam pendentes ao recarregar o app
+      for (const it of items) {
+        if (it.sku && (Number(it.qty) || 0) !== (Number(it.synced_qty) || 0)) {
+          pendingSyncs.add(it.sku);
+        }
+      }
+      if (pendingSyncs.size > 0) {
+        toast(`⏳ Retomando sync de ${pendingSyncs.size} item(s)`);
+        syncTimer = setTimeout(flushSync, 400);
+      }
+    }
+  });
+
+  // Health-ping periódico pra refletir status de conexão (a cada 60s)
+  setInterval(async () => {
     try {
-      const resp = await fetch('synced.json?t=' + Date.now(), { cache: 'no-store' });
-      if (!resp.ok) return;
-      const data = await resp.json();
-      const entries = data && data.entries ? data.entries : {};
-      let updated = 0, added = 0, itemsBackfilled = 0;
-
-      for (const sku of Object.keys(entries)) {
-        let ean, name = '';
-        const e = entries[sku];
-        if (typeof e === 'string') { ean = e.trim(); }
-        else if (e && typeof e === 'object') { ean = String(e.ean || '').trim(); name = String(e.name || '').trim(); }
-        if (!ean) continue;
-
-        let p = skuIndex.get(sku);
-        if (p) {
-          if (p.ean !== ean || p._origEan !== ean || (name && !p.name)) {
-            if (p.ean && p.ean !== ean) eanIndex.delete(p.ean);
-            p.ean = ean;
-            p._origEan = ean;
-            if (name && !p.name) p.name = name;
-            eanIndex.set(ean, p);
-            updated++;
-          }
-        } else if (catalog.length > 0) {
-          // SKU veio do OLIST mas não tá no catálogo local — adiciona
-          p = { sku, name, ean, _origEan: ean };
-          catalog.push(p);
-          skuIndex.set(sku, p);
-          eanIndex.set(ean, p);
-          added++;
-        }
-
-        // Preenche items já bipados que tinham esse EAN sem SKU
-        if (p) {
-          for (const it of items) {
-            if (it.ean === ean && !it.sku) {
-              it.sku = p.sku;
-              if (!it.name && p.name) it.name = p.name;
-              itemsBackfilled++;
-            }
-          }
+      await fetch(WORKER_URL + '/', { cache: 'no-store' });
+      if (!workerOnline) {
+        setWorkerStatus('online', 'reconectado');
+        // Tenta reflush quando volta
+        if (pendingSyncs.size > 0 && !syncInFlight && !syncTimer) {
+          syncTimer = setTimeout(flushSync, 200);
         }
       }
+    } catch {
+      setWorkerStatus('offline', 'sem rede');
+    }
+  }, 60000);
 
-      if (updated > 0 || added > 0 || itemsBackfilled > 0) {
-        saveCatalog();
-        if (itemsBackfilled > 0) saveItems();
-        render();
-        if (activeEan) showLastScan(activeEan, false);
-        const parts = [];
-        if (updated > 0) parts.push(`${updated} sync`);
-        if (added > 0) parts.push(`${added} novo${added > 1 ? 's' : ''}`);
-        if (itemsBackfilled > 0) parts.push(`${itemsBackfilled} item${itemsBackfilled > 1 ? 's' : ''} vinculado${itemsBackfilled > 1 ? 's' : ''}`);
-        toast(`✓ ${parts.join(' · ')} (OLIST)`);
-      }
-    } catch (e) { console.warn('[sync]', e); }
-  }
-  setTimeout(autoSyncFromServer, 600);
+  // Reflush quando a aba volta a ficar visível (mobile background)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && pendingSyncs.size > 0 && !syncInFlight && !syncTimer) {
+      syncTimer = setTimeout(flushSync, 200);
+    }
+  });
 })();
 </script>
 </body>

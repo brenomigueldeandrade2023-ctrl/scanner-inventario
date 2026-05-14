@@ -7,11 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Brenão">
+<meta name="apple-mobile-web-app-title" content="Vânia Importados">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="icon" type="image/png" href="logo.png">
-<title>Scanner do Brenão · Vânia Importados</title>
+<title>Scanner Vânia Importados</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
@@ -893,8 +893,8 @@
   <div class="brand">
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
-      <div class="brand-title">Scanner do Brenão</div>
-      <div class="brand-sub" id="brand-sub">Vânia Importados · v11</div>
+      <div class="brand-title">Scanner Vânia Importados</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v12</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1240,7 +1240,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v11';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v12';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();

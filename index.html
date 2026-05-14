@@ -908,7 +908,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v17</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v18</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -920,7 +920,7 @@
     <h2>Sessão</h2>
     <div class="session-row">
       <label>Nome:</label>
-      <input id="session-name" type="text" placeholder="Ex: Remessa 15-05, Conferência semanal..." autocomplete="off">
+      <input id="session-name" type="text" placeholder="Ex: Setor A / Estante 1 / iPhone Vânia" autocomplete="off">
     </div>
     <h2>Scanner</h2>
     <div id="video-wrap">
@@ -1458,7 +1458,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v17';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v18';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1518,14 +1518,19 @@
         if (it.sku) {
           const tgt = Number(it.qty) || 0;
           const synced = Number(it.synced_qty) || 0;
+          // saldo_olist é o total no OLIST após o último sync (inclui o que outros dispositivos contaram)
+          const olistTotal = (it.saldo_olist != null) ? Number(it.saldo_olist) : synced;
+          const otherDevices = olistTotal - synced;
           if (it.sync_status === 'error') {
             syncBadge = `<span class="item-sync error" title="${escapeHtml(it.sync_error || 'erro')}">⚠ erro</span>`;
           } else if (it.sync_status === 'syncing') {
             syncBadge = `<span class="item-sync syncing">⏳ enviando</span>`;
           } else if (tgt !== synced) {
             syncBadge = `<span class="item-sync pending">⏳ pendente</span>`;
-          } else if (synced > 0) {
-            syncBadge = `<span class="item-sync synced">✓ ${synced} no OLIST</span>`;
+          } else if (synced > 0 || olistTotal > 0) {
+            const myPart = synced > 0 ? `${synced}` : '0';
+            const totalPart = otherDevices > 0 ? ` / OLIST ${olistTotal}` : '';
+            syncBadge = `<span class="item-sync synced" title="${escapeHtml(myPart + ' contados aqui · ' + olistTotal + ' total no OLIST')}">✓ ${myPart}${totalPart}</span>`;
           }
         } else {
           syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
@@ -2414,8 +2419,8 @@
     if (items.length === 0) { toast('Lista já está vazia', 'warn'); return; }
     const pending = items.filter(i => (Number(i.qty) || 0) !== (Number(i.synced_qty) || 0)).length;
     const msg = pending > 0
-      ? `Limpar ${items.length} itens?\n⚠ ${pending} ainda não sincronizou(aram) — esses movimentos NÃO subirão pro OLIST.\nO catálogo é mantido.`
-      : `Limpar ${items.length} itens já sincronizados?\nMovimentos no OLIST permanecem; o catálogo é mantido.`;
+      ? `⚠ Limpar ${items.length} itens?\n${pending} ainda não foram sincronizados — esses movimentos serão PERDIDOS.\nO catálogo OLIST permanece; movimentos já sincronizados continuam lá.`
+      : `Limpar ${items.length} itens já sincronizados?\n⚠ Os movimentos no OLIST permanecem. Se rebippar amanhã sem ter contado todo o físico, vai DUPLICAR saldo.\nMelhor manter a lista visível até o fim da contagem completa.`;
     if (confirm(msg)) {
       items = [];
       pendingSyncs.clear();
@@ -2479,6 +2484,13 @@
       setWorkerStatus('offline', 'sem rede');
     }
   }, 60000);
+
+  // Refresh periódico do catálogo (2min) — captura vinculações de outros dispositivos
+  setInterval(() => {
+    if (!document.hidden && workerOnline && !syncInFlight) {
+      fetchCatalogFromWorker({ fresh: false });
+    }
+  }, 120000);
 
   // Reflush quando a aba volta a ficar visível (mobile background)
   document.addEventListener('visibilitychange', () => {

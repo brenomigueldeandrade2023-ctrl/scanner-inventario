@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v20</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v21</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1406,6 +1406,9 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
+      // Em background, busca saldos OLIST e seed/atualiza items locais (v21)
+      // Não bloqueia o boot — toast aparece quando termina (~5-10s)
+      fetchSaldosFromWorker().catch(err => console.warn('[saldos] background:', err));
       return produtos.length;
     } catch (err) {
       console.warn('[catalog]', err);
@@ -1453,11 +1456,20 @@
       try {
         const note = sessionName ? `[${sessionName}] Scanner ${delta > 0 ? 'entrada' : 'saída'} ${Math.abs(delta)} un` : undefined;
         const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note } });
-        item.synced_qty = targetQty;
+        // synced_qty = saldo OLIST atual (não local qty) — lida com multi-device
+        // Se outro dispositivo contribuiu entre nosso fetch e nosso sync, saldo > targetQty,
+        // mas nosso delta foi aplicado certinho.
+        item.synced_qty = Number(result.saldo);
         item.sync_status = 'synced';
         item.sync_error = null;
-        item.saldo_olist = result.saldo;
-        setWorkerStatus('online', `+${delta} ${sku} · saldo ${result.saldo}`);
+        item.saldo_olist = Number(result.saldo);
+        // Se qty divergiu do que mandamos (rebipe durante sync), mantém pending
+        const currentQty = Number(item.qty) || 0;
+        if (currentQty !== Number(result.saldo)) {
+          item.sync_status = 'pending';
+          pendingSyncs.add(sku);
+        }
+        setWorkerStatus('online', `${delta > 0 ? '+' : ''}${delta} ${sku} · saldo ${result.saldo}`);
       } catch (err) {
         console.warn('[sync]', sku, err);
         item.sync_status = 'error';
@@ -1511,6 +1523,73 @@
     }
   }
 
+  // Busca saldo atual de cada produto no OLIST e seed/atualiza items locais (v21)
+  // Resolve "qty local 0 vs OLIST 4" — adota saldo OLIST como ponto de partida da contagem.
+  async function fetchSaldosFromWorker() {
+    if (!catalog || catalog.length === 0) return {};
+    const ids = catalog.map(p => String(p.id)).filter(Boolean);
+    const batchSize = 40;
+    const allSaldos = {};
+    let batchErrors = 0;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      try {
+        const data = await workerFetch('/saldos', { method: 'POST', body: { ids: batch } });
+        Object.assign(allSaldos, data.saldos || {});
+      } catch (err) {
+        batchErrors++;
+        console.warn('[saldos] batch failed:', err);
+      }
+    }
+    if (batchErrors > 0) {
+      toast(`⚠ Saldo OLIST: ${batchErrors} batch(es) falhou — alguns produtos podem começar do zero`, 'warn');
+    }
+    // Anexa ao catálogo + pré-popula/atualiza items locais
+    let seeded = 0, refreshed = 0;
+    for (const p of catalog) {
+      const saldo = Number(allSaldos[p.sku] || 0);
+      p.olist_saldo = saldo;
+      if (saldo === 0) continue;
+      const existing = items.find(it => it.sku === p.sku);
+      if (!existing) {
+        // Adota o saldo OLIST como contagem inicial — Vânia vê o que OLIST tem
+        items.push({
+          ean: p.ean || ('sku:' + p.sku),
+          sku: p.sku,
+          name: p.name || '',
+          qty: saldo,
+          synced_qty: saldo,
+          saldo_olist: saldo,
+          sync_status: 'synced',
+        });
+        seeded++;
+      } else {
+        existing.saldo_olist = saldo;
+        // Se NÃO tem delta pendente, atualiza qty pra refletir OLIST atual.
+        // Se tem delta pendente, preserva contagem da Vânia (só atualiza referência OLIST).
+        const localQty = Number(existing.qty) || 0;
+        const localSynced = Number(existing.synced_qty) || 0;
+        if (existing.sync_status === 'synced' && localQty === localSynced) {
+          if (localQty !== saldo) {
+            existing.qty = saldo;
+            existing.synced_qty = saldo;
+            refreshed++;
+          }
+        }
+      }
+    }
+    saveCatalog();
+    saveItems();
+    if (seeded > 0 || refreshed > 0) {
+      const parts = [];
+      if (seeded > 0) parts.push(`${seeded} pré-carregado(s) do OLIST`);
+      if (refreshed > 0) parts.push(`${refreshed} atualizado(s)`);
+      toast('📦 ' + parts.join(' · '));
+      render();
+    }
+    return allSaldos;
+  }
+
   async function vincularRemote(sku, ean) {
     try {
       await workerFetch('/vincular', { method: 'POST', body: { sku, ean } });
@@ -1533,7 +1612,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v20';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v21';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1665,12 +1744,15 @@
         if (!existing.name) existing.name = prod.name;
       }
     } else {
+      // Se o produto já tem saldo no OLIST, adota como ponto de partida (v21)
+      const startSaldo = (prod && Number(prod.olist_saldo) > 0) ? Number(prod.olist_saldo) : 0;
       items.push({
         ean,
         sku: prod ? prod.sku : '',
         name: prod ? prod.name : '',
-        qty: 1,
-        synced_qty: 0,
+        qty: startSaldo + 1,
+        synced_qty: startSaldo,
+        saldo_olist: startSaldo,
         sync_status: prod ? 'pending' : 'idle',
       });
     }

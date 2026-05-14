@@ -894,7 +894,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner do Brenão</div>
-      <div class="brand-sub" id="brand-sub">Vânia Importados · v10</div>
+      <div class="brand-sub" id="brand-sub">Vânia Importados · v11</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1240,7 +1240,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v10';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Vânia Importados · v11';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2358,6 +2358,38 @@
   if (localStorage.getItem(LS_SETTINGS_OPEN) === '1' && !geminiKey) openSettings();
   render();
   if (!window.isSecureContext) toast('Atenção: câmera só funciona em HTTPS', 'warn');
+
+  // Auto-sync from synced.json (server-side EAN→SKU sync after OLIST updates)
+  async function autoSyncFromServer() {
+    if (catalog.length === 0) return;
+    try {
+      const resp = await fetch('synced.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const entries = data && data.entries ? data.entries : {};
+      let changed = 0, missing = 0;
+      for (const sku of Object.keys(entries)) {
+        const ean = String(entries[sku] || '').trim();
+        if (!ean) continue;
+        const p = skuIndex.get(sku);
+        if (!p) { missing++; continue; }
+        if (p.ean !== ean || p._origEan !== ean) {
+          if (p.ean && p.ean !== ean) eanIndex.delete(p.ean);
+          p.ean = ean;
+          p._origEan = ean;
+          eanIndex.set(ean, p);
+          changed++;
+        }
+      }
+      if (changed > 0) {
+        saveCatalog();
+        render();
+        toast(`✓ ${changed} EAN${changed > 1 ? 's' : ''} sincronizado${changed > 1 ? 's' : ''} (OLIST)`);
+      }
+      if (missing > 0) console.warn(`[sync] ${missing} SKU(s) do server não estão no catálogo local`);
+    } catch (e) { console.warn('[sync] autoSync failed:', e); }
+  }
+  setTimeout(autoSyncFromServer, 600);
 })();
 </script>
 </body>

@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24.2</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1122,8 +1122,19 @@
   const LS_HID_MODE = 'inv_hid_mode_v1';
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
-  const SYNC_RETRY_MS = 8000;
+  const SYNC_RETRY_BASE_MS = 8000;
+  const SYNC_RETRY_MAX_MS = 600000;       // v25: backoff exponencial cap em 10 min
   const SEARCH_LIMIT = 6;
+  const OFFLINE_FAIL_THRESHOLD = 3;       // v25: só marca OFFLINE após 3 falhas seguidas
+  const APP_VERSION = 'v25';
+
+  // v25: gera UUID curto pra idempotency key por bipe (persistido no item)
+  function genOpId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
 
   // ---------- State ----------
   let items = loadJSON(LS_ITEMS, []);
@@ -1149,6 +1160,10 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
+  // v25: contador de falhas pra não marcar OFFLINE no primeiro tropeço
+  let consecutiveFails = 0;
+  let nextRetryAt = 0;              // timestamp ms — respeita Retry-After do Worker
+  let lastErrorDetail = '';
   // HID pistol mode (v17)
   let hidMode = localStorage.getItem(LS_HID_MODE) === '1';
   let hidRefocusTimer = null;
@@ -1300,9 +1315,24 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
-  // ---------- Worker sync (v16) ----------
+  // ---------- Worker sync (v16 → v25) ----------
+  // v25: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
   function setWorkerStatus(state, detail) {
-    workerOnline = (state === 'online' || state === 'syncing');
+    if (state === 'online' || state === 'syncing') {
+      consecutiveFails = 0;
+      lastErrorDetail = '';
+      workerOnline = true;
+    } else if (state === 'offline') {
+      consecutiveFails++;
+      lastErrorDetail = detail || '';
+      // Só marca offline visualmente após THRESHOLD falhas seguidas
+      if (consecutiveFails < OFFLINE_FAIL_THRESHOLD) {
+        syncIndicator.className = 'sync-indicator syncing';
+        syncIndicator.title = `Tentando... (${consecutiveFails}/${OFFLINE_FAIL_THRESHOLD})`;
+        return;
+      }
+      workerOnline = false;
+    }
     syncIndicator.className = 'sync-indicator ' + state;
     syncIndicator.title = detail || state;
   }
@@ -1344,7 +1374,17 @@
     syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
   }
 
+  // v25: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
+  // outras chamadas pularem até o tempo combinado (cooperative backoff).
   async function workerFetch(path, opts = {}) {
+    // Se Worker pediu pra esperar e ainda não é hora, falha rápido sem bater na rede
+    if (nextRetryAt && Date.now() < nextRetryAt) {
+      const waitS = Math.ceil((nextRetryAt - Date.now()) / 1000);
+      const err = new Error(`backoff:${waitS}s`);
+      err.code = 'BACKOFF';
+      err.retry_after_s = waitS;
+      throw err;
+    }
     const url = WORKER_URL + path;
     const init = {
       method: opts.method || 'GET',
@@ -1354,6 +1394,15 @@
     const res = await fetch(url, init);
     let data;
     try { data = await res.json(); } catch { data = { ok: false, error: 'invalid json from worker' }; }
+    // 429 = Tiny rate-limited. Honra Retry-After (header ou retry_after_s no body).
+    if (res.status === 429) {
+      const ra = Number(res.headers.get('Retry-After')) || Number(data.retry_after_s) || 60;
+      nextRetryAt = Date.now() + ra * 1000;
+      const err = new Error(`tiny_rate_limited:${ra}s`);
+      err.code = 'RATE_LIMITED';
+      err.retry_after_s = ra;
+      throw err;
+    }
     if (!res.ok || data.ok === false) {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
@@ -1408,9 +1457,13 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
-      // Em background, busca saldos OLIST e seed/atualiza items locais (v21)
-      // Não bloqueia o boot — toast aparece quando termina (~5-10s)
-      fetchSaldosFromWorker().catch(err => console.warn('[saldos] background:', err));
+      // v25: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
+      // 599 produtos no boot esgota e dispara punishment mode. Pre-seed agora é
+      // lazy: só quando a Vânia bipar um item desconhecido OU apertar Atualizar.
+      // Quem chamou fetchCatalogFromWorker com opts.withSaldos=true força o seed.
+      if (opts.withSaldos === true) {
+        fetchSaldosFromWorker().catch(err => console.warn('[saldos] background:', err));
+      }
       return produtos.length;
     } catch (err) {
       console.warn('[catalog]', err);
@@ -1442,9 +1495,19 @@
     syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
   }
 
+  // v25: flushSync com opId (idempotency) + backoff exponencial + respeito a 429.
+  // Cada item ganha opId UUID quando bipado. Mesmo opId em retry = Worker dedupa.
+  // Sem mais "duplicação por rate-limit" — Worker garante 1 movimento por opId.
   async function flushSync() {
     if (syncInFlight) return;
     if (pendingSyncs.size === 0) { updateSyncStatusBar(); return; }
+    // Respeita backoff cooperativo (Retry-After do Worker)
+    if (nextRetryAt && Date.now() < nextRetryAt) {
+      const waitMs = nextRetryAt - Date.now();
+      syncTimer = setTimeout(flushSync, waitMs + 500);
+      updateSyncStatusBar();
+      return;
+    }
     syncInFlight = true;
     const toFlush = Array.from(pendingSyncs);
     pendingSyncs.clear();
@@ -1457,59 +1520,56 @@
       const delta = targetQty - syncedQty;
       if (delta === 0) {
         item.sync_status = 'synced';
+        item.sync_attempts = 0;
+        item.op_id = null;
         continue;
       }
+      // v25: garante opId estável pro retry replayar
+      if (!item.op_id) item.op_id = genOpId();
       item.sync_status = 'syncing';
       saveItems();
       updateSyncStatusBar();
       render();
       try {
-        // (v24.2) PRE-CHECK: antes de mandar delta, valida saldo atual OLIST.
-        // SÓ usa o saldo se o Worker confirmou que VEIO (knownSkus). Senão segue sync.
-        try {
-          const found = catalog.find(p => p.sku === sku);
-          if (found) {
-            const saldosCheck = await workerFetch('/saldos', { method: 'POST', body: { ids: [String(found.id)] } });
-            const skuConfirmed = saldosCheck?.saldos && (sku in saldosCheck.saldos);
-            const olistSaldo = skuConfirmed ? Number(saldosCheck.saldos[sku]) : NaN;
-            if (skuConfirmed && Number.isFinite(olistSaldo) && olistSaldo === targetQty) {
-              item.synced_qty = olistSaldo;
-              item.sync_status = 'synced';
-              item.sync_error = null;
-              item.saldo_olist = olistSaldo;
-              saveItems();
-              setWorkerStatus('online', `✓ ${sku} já tava em ${olistSaldo} no OLIST`);
-              continue;
-            }
-          }
-        } catch (chkErr) { /* falha do pre-check é ok, segue pro sync */ }
         const note = sessionName ? `[${sessionName}] Scanner ${delta > 0 ? 'entrada' : 'saída'} ${Math.abs(delta)} un` : undefined;
-        const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note } });
+        const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note, opId: item.op_id } });
         // synced_qty = saldo OLIST atual (não local qty) — lida com multi-device
-        // Se outro dispositivo contribuiu entre nosso fetch e nosso sync, saldo > targetQty,
-        // mas nosso delta foi aplicado certinho.
         item.synced_qty = Number(result.saldo);
         item.sync_status = 'synced';
         item.sync_error = null;
+        item.sync_attempts = 0;
         item.saldo_olist = Number(result.saldo);
-        // Se qty divergiu do que mandamos (rebipe durante sync), mantém pending
+        item.op_id = null; // consumido
+        // Se qty divergiu do que mandamos (rebipe durante sync), mantém pending com novo opId
         const currentQty = Number(item.qty) || 0;
         if (currentQty !== Number(result.saldo)) {
           item.sync_status = 'pending';
+          item.op_id = genOpId();
           pendingSyncs.add(sku);
         }
-        setWorkerStatus('online', `${delta > 0 ? '+' : ''}${delta} ${sku} · saldo ${result.saldo}`);
+        const tag = result.idempotent_replay ? ' (replay)' : '';
+        setWorkerStatus('online', `${delta > 0 ? '+' : ''}${delta} ${sku} · saldo ${result.saldo}${tag}`);
       } catch (err) {
         console.warn('[sync]', sku, err);
-        item.sync_status = 'error';
+        item.sync_status = 'pending'; // mantém pending pra retry com mesmo opId
         item.sync_error = err.message;
-        pendingSyncs.add(sku); // requeue
+        item.sync_attempts = (item.sync_attempts || 0) + 1;
+        pendingSyncs.add(sku); // requeue (op_id persiste no item)
+        // Backoff exponencial: 8s → 16s → 32s → ... capped em 10 min
+        const attempts = item.sync_attempts;
+        let backoffMs = Math.min(SYNC_RETRY_BASE_MS * Math.pow(2, attempts - 1), SYNC_RETRY_MAX_MS);
+        // Se foi 429 explícito, respeita o Retry-After do Worker
+        if (err.code === 'RATE_LIMITED' || err.code === 'BACKOFF') {
+          backoffMs = Math.max(backoffMs, (err.retry_after_s || 60) * 1000);
+        }
         setWorkerStatus('offline', err.message);
-        // backoff: retry depois
-        setTimeout(() => {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(() => {
+          syncTimer = null;
           if (pendingSyncs.size > 0 && !syncInFlight) flushSync();
-        }, SYNC_RETRY_MS);
-        break; // não martela em erro de rede
+        }, backoffMs);
+        saveItems();
+        break; // não martela
       }
       saveItems();
     }
@@ -1552,7 +1612,7 @@
     }
   }
 
-  // Busca saldo atual de cada produto no OLIST (v24.2)
+  // Busca saldo atual de cada produto no OLIST (v25)
   // CRÍTICO: distingue "saldo retornado pelo Worker" de "saldo não veio".
   // Se o batch teve falhas (Tiny rate-limit), NÃO usa saldo=0 falso pra
   // reconciliar — preserva o estado local pros SKUs que não vieram.
@@ -1782,7 +1842,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24.2';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2610,7 +2670,13 @@
     }
   });
 
-  btnRefreshCatalog.addEventListener('click', () => fetchCatalogFromWorker({ fresh: true }));
+  // v25: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
+  // (no boot automático isso é skipado pra não esgotar cota Tiny)
+  btnRefreshCatalog.addEventListener('click', () => {
+    nextRetryAt = 0; // limpa backoff em ação manual
+    consecutiveFails = 0;
+    fetchCatalogFromWorker({ fresh: true, withSaldos: true });
+  });
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
   $('btn-export-cadastros').addEventListener('click', cadastrarNovosNoSite);
 

@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24.1</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1456,6 +1456,25 @@
       updateSyncStatusBar();
       render();
       try {
+        // (v24-fix) PRE-CHECK: antes de mandar delta, valida saldo atual OLIST.
+        // Se OLIST já bate com qty local, NÃO envia /sync (evita duplicar quando
+        // tentativa anterior chegou mas response falhou cosmeticamente).
+        try {
+          const found = catalog.find(p => p.sku === sku);
+          if (found) {
+            const saldosCheck = await workerFetch('/saldos', { method: 'POST', body: { ids: [String(found.id)] } });
+            const olistSaldo = Number(saldosCheck?.saldos?.[sku] ?? NaN);
+            if (Number.isFinite(olistSaldo) && olistSaldo === targetQty) {
+              item.synced_qty = olistSaldo;
+              item.sync_status = 'synced';
+              item.sync_error = null;
+              item.saldo_olist = olistSaldo;
+              saveItems();
+              setWorkerStatus('online', `✓ ${sku} já tava em ${olistSaldo} no OLIST`);
+              continue;
+            }
+          }
+        } catch (chkErr) { /* falha do pre-check é ok, segue pro sync */ }
         const note = sessionName ? `[${sessionName}] Scanner ${delta > 0 ? 'entrada' : 'saída'} ${Math.abs(delta)} un` : undefined;
         const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note } });
         // synced_qty = saldo OLIST atual (não local qty) — lida com multi-device
@@ -1567,17 +1586,25 @@
         seeded++;
       } else {
         existing.saldo_olist = saldo;
-        // Se NÃO tem delta pendente, atualiza qty pra refletir OLIST atual.
-        // Se tem delta pendente, preserva contagem da Vânia (só atualiza referência OLIST).
         const localQty = Number(existing.qty) || 0;
         const localSynced = Number(existing.synced_qty) || 0;
-        if (existing.sync_status === 'synced' && localQty === localSynced) {
-          if (localQty !== saldo) {
-            existing.qty = saldo;
-            existing.synced_qty = saldo;
-            refreshed++;
-          }
+        // (1) v24-fix: RECONCILIAÇÃO CRÍTICA — se saldo OLIST já bate com qty local,
+        // marca como synced independente do status anterior. Resolve casos onde
+        // /sync chegou no Tiny mas resposta falhou (ERRO cosmético no scanner →
+        // se não tratar, próximo flush duplicaria o saldo).
+        if (localQty === saldo) {
+          existing.synced_qty = saldo;
+          existing.sync_status = 'synced';
+          existing.sync_error = null;
+          pendingSyncs.delete(existing.sku);
+          if (localSynced !== saldo) refreshed++;
+        } else if (existing.sync_status === 'synced' && localQty === localSynced) {
+          // (2) Sem delta pendente local — atualiza qty pra refletir mudança externa
+          existing.qty = saldo;
+          existing.synced_qty = saldo;
+          refreshed++;
         }
+        // (3) Senão: tem delta pendente legítimo, preserva qty da Vânia.
       }
     }
     saveCatalog();
@@ -1736,7 +1763,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24.1';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();

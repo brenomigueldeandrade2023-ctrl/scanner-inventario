@@ -1,10 +1,10 @@
 {
-  "version": 1,
-  "updated_at": "2026-05-14T01:45:00Z",
-  "note": "EANs ja persistidos no OLIST via API. Scanner consome este arquivo no init pra marcar SKUs como sincronizados.",
+  "version": 2,
+  "updated_at": "2026-05-14T02:00:00Z",
+  "note": "Cadastro autoritativo OLIST. Scanner consome no init pra sincronizar catalogo + items. Formato v2: entries[sku] = {ean, name}",
   "entries": {
-    "ARAB-0297": "6297001158456",
-    "362H": "634240397417",
-    "519M": "6290360599304"
+    "ARAB-0297": { "ean": "6297001158456", "name": "Nardo Oud Orientica Premium - Compartilhável" },
+    "362H": { "ean": "634240397417", "name": "Bidaya Ayat – Masculino" },
+    "519M": { "ean": "6290360599304", "name": "Nébula I Maison Alhambra – Compartilhável" }
   }
 }

@@ -469,6 +469,41 @@
   }
   .ls-row { display: flex; gap: 10px; align-items: flex-end; }
   .ls-row > .ls-field { flex: 1; }
+  .ls-price-row { display: flex; gap: 8px; margin-top: 8px; }
+  .ls-price-row > .ls-field { flex: 1; margin-bottom: 0; }
+  .ls-field.price input {
+    font-family: ui-monospace, "SF Mono", monospace;
+    text-align: right;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--gold);
+  }
+  .ls-field.price label {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .ls-field.price label .price-tag {
+    background: var(--gold);
+    color: #1a0f00;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+  }
+  .ls-field.price .currency-prefix {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(calc(-50% + 8px));
+    color: var(--text-dim);
+    font-size: 14px;
+    pointer-events: none;
+    font-family: ui-monospace, monospace;
+  }
+  .ls-field.price { position: relative; }
+  .ls-field.price input { padding-left: 32px; }
   .ls-qty-actions { display: flex; flex-direction: column; gap: 4px; }
   .ls-qty-actions button {
     width: 44px;
@@ -894,7 +929,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v12</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v13</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -963,6 +998,18 @@
           <button id="ls-qty-dec" type="button">−</button>
         </div>
       </div>
+      <div class="ls-price-row">
+        <div class="ls-field price">
+          <label for="ls-preco-normal"><span class="price-tag">P</span> Preço normal</label>
+          <span class="currency-prefix">R$</span>
+          <input id="ls-preco-normal" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </div>
+        <div class="ls-field price">
+          <label for="ls-preco-promo"><span class="price-tag">PM</span> Promocional</label>
+          <span class="currency-prefix">R$</span>
+          <input id="ls-preco-promo" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </div>
+      </div>
     </div>
   </section>
 
@@ -981,6 +1028,9 @@
     </button>
     <button id="btn-export-unlinked" class="btn-warn btn-block" style="display: none; margin-top: 6px;">
       📋 Exportar produtos não vinculados (EAN;Nome;Qtd)
+    </button>
+    <button id="btn-export-cadastros" class="btn-ai btn-block" style="display: none; margin-top: 6px;">
+      📦 Exportar pra cadastro (Nome;P;PM;EAN;Qtd) → me anexa em chat
     </button>
     <button id="btn-clear-catalog" class="btn-ghost" style="display: none; margin-top: 6px; font-size: 12px; width: 100%; text-decoration: underline;">
       Limpar catálogo
@@ -1115,6 +1165,8 @@
   const lsQtyInput = $('ls-qty-input');
   const lsQtyInc = $('ls-qty-inc');
   const lsQtyDec = $('ls-qty-dec');
+  const lsPrecoNormal = $('ls-preco-normal');
+  const lsPrecoPromo = $('ls-preco-promo');
   const catalogCount = $('catalog-count');
   const linkedCountEl = $('linked-count');
   const catalogMetaEl = $('catalog-meta');
@@ -1200,6 +1252,16 @@
   function displayEan(s) {
     return isSyntheticId(s) ? '—' : (s || '—');
   }
+  function parsePrice(str) {
+    if (str === null || str === undefined || str === '') return null;
+    const s = String(str).replace(/[^\d,.\-]/g, '').replace(',', '.');
+    const n = parseFloat(s);
+    return isFinite(n) && n >= 0 ? n : null;
+  }
+  function formatPrice(num) {
+    if (num === null || num === undefined || num === '' || isNaN(num)) return '';
+    return Number(num).toFixed(2).replace('.', ',');
+  }
 
   let audioCtx = null;
   async function ensureAudio() {
@@ -1240,7 +1302,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v12';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v13';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1260,16 +1322,27 @@
       catalogMetaEl.textContent = 'Importe o CSV de produtos do OLIST';
     }
 
-    const noSkuCount = items.filter(i => !i.sku).length;
+    const noSkuItems = items.filter(i => !i.sku);
+    const noSkuCount = noSkuItems.length;
     const btnExportUnlinked = $('btn-export-unlinked');
+    const btnExportCadastros = $('btn-export-cadastros');
     if (noSkuCount > 0) {
       warnNoSku.style.display = 'block';
-      warnNoSku.textContent = `⚠ ${noSkuCount} ${noSkuCount === 1 ? 'item não vinculado' : 'itens não vinculados'}. Toque em "vincular" pra associar ao OLIST ou use o botão acima pra exportar e cadastrar manualmente depois.`;
+      warnNoSku.textContent = `⚠ ${noSkuCount} ${noSkuCount === 1 ? 'item não vinculado' : 'itens não vinculados'}. Toque em "vincular" pra associar ao OLIST, ou preencha nome+preço pra cadastrar como produto novo.`;
       btnExportUnlinked.style.display = 'block';
       btnExportUnlinked.textContent = `📋 Exportar ${noSkuCount} produto${noSkuCount > 1 ? 's' : ''} não vinculado${noSkuCount > 1 ? 's' : ''} (EAN;Nome;Qtd)`;
+      // Cadastros: only show button if at least one item has nome + price ready
+      const readyForCadastro = noSkuItems.filter(i => (i.name || '').trim() && i.precoNormal != null && i.precoNormal !== '').length;
+      if (readyForCadastro > 0) {
+        btnExportCadastros.style.display = 'block';
+        btnExportCadastros.textContent = `📦 Exportar ${readyForCadastro} pra cadastro (Nome;P;PM;EAN;Qtd) → me anexa em chat`;
+      } else {
+        btnExportCadastros.style.display = 'none';
+      }
     } else {
       warnNoSku.style.display = 'none';
       btnExportUnlinked.style.display = 'none';
+      btnExportCadastros.style.display = 'none';
     }
 
     // List with filter
@@ -1296,10 +1369,16 @@
           ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
         const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} · ` : '';
         const eanLabel = isSyntheticId(it.ean) ? (it.ean.startsWith('ai:') ? '🧠 IA' : '—') : `EAN: ${escapeHtml(it.ean)}`;
+        let priceHtml = '';
+        if (it.precoNormal != null && it.precoNormal !== '') {
+          const p = formatPrice(it.precoNormal);
+          const pm = (it.precoPromo != null && it.precoPromo !== '') ? ` · PM R$ ${formatPrice(it.precoPromo)}` : '';
+          priceHtml = `<span style="color: var(--gold); font-weight: 600;">P R$ ${p}${pm}</span> · `;
+        }
         div.innerHTML = `
           <div class="info">
             ${nameHtml}
-            <div class="meta">${skuHtml}${eanLabel} ${linkBadge}</div>
+            <div class="meta">${priceHtml}${skuHtml}${eanLabel} ${linkBadge}</div>
           </div>
           <div class="qty-ctrl">
             <button data-act="dec">−</button>
@@ -1409,6 +1488,8 @@
 
     if (document.activeElement !== lsNameInput) lsNameInput.value = item.name || '';
     if (document.activeElement !== lsQtyInput) lsQtyInput.value = item.qty;
+    if (document.activeElement !== lsPrecoNormal) lsPrecoNormal.value = formatPrice(item.precoNormal);
+    if (document.activeElement !== lsPrecoPromo) lsPrecoPromo.value = formatPrice(item.precoPromo);
 
     if (focusFirst && !unlinked && !item.name) {
       setTimeout(() => { lsNameInput.focus(); lsNameInput.select(); }, 80);
@@ -2079,6 +2160,35 @@
     toast(`${unlinked.length} não vinculados exportados`);
   }
 
+  function exportNovosCadastros() {
+    // Items without SKU = need cadastro. Require Nome + P + PM at minimum.
+    const candidates = items.filter(i => !i.sku);
+    if (candidates.length === 0) { toast('Nenhum produto novo pra cadastrar', 'warn'); return; }
+    const lines = ['Nome;P;PM;EAN;Quantidade'];
+    let withPrice = 0, missingPrice = 0, missingName = 0;
+    for (const it of candidates) {
+      const name = (it.name || '').trim();
+      if (!name) { missingName++; continue; }
+      const p = it.precoNormal;
+      const pm = it.precoPromo;
+      if (p === null || p === undefined || p === '') { missingPrice++; continue; }
+      const ean = isSyntheticId(it.ean) ? '' : it.ean;
+      const pmOut = (pm === null || pm === undefined || pm === '') ? '' : formatPrice(pm);
+      lines.push(`${csvEscape(name)};${formatPrice(p)};${pmOut};${csvEscape(ean)};${Number(it.qty) || 0}`);
+      withPrice++;
+    }
+    if (withPrice === 0) {
+      toast('⚠ Preencha Nome + P (preço) nos produtos novos antes de exportar', 'warn');
+      return;
+    }
+    const ts = new Date().toISOString().slice(0,19).replace(/[T:]/g, '-');
+    downloadCSV(`${exportPrefix()}cadastros_${ts}.csv`, lines.join('\r\n'));
+    let msg = `${withPrice} pra cadastro`;
+    if (missingPrice > 0) msg += ` · ⚠ ${missingPrice} sem preço (não exportados)`;
+    if (missingName > 0) msg += ` · ⚠ ${missingName} sem nome`;
+    toast(msg);
+  }
+
   // ---------- Events ----------
   sessionInput.value = sessionName;
   sessionInput.addEventListener('input', () => {
@@ -2112,6 +2222,7 @@
   });
   btnExportEans.addEventListener('click', exportEans);
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
+  $('btn-export-cadastros').addEventListener('click', exportNovosCadastros);
   $('btn-clear-catalog').addEventListener('click', clearCatalog);
 
   listSearchEl.addEventListener('input', () => {
@@ -2239,6 +2350,29 @@
     }
     saveItems(); render();
   });
+
+  function bindPriceInput(el, field) {
+    el.addEventListener('input', () => {
+      if (!activeEan) return;
+      const item = items.find(i => i.ean === activeEan);
+      if (!item) return;
+      const v = parsePrice(el.value);
+      item[field] = v;
+      saveItems();
+      render();
+    });
+    el.addEventListener('blur', () => {
+      if (!activeEan) return;
+      const item = items.find(i => i.ean === activeEan);
+      if (!item) { el.value = ''; return; }
+      el.value = formatPrice(item[field]);
+    });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    });
+  }
+  bindPriceInput(lsPrecoNormal, 'precoNormal');
+  bindPriceInput(lsPrecoPromo, 'precoPromo');
 
   let searchTimer = null;
   lsLinkSearch.addEventListener('input', () => {

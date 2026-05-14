@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v21</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v22</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1152,6 +1152,8 @@
   // HID pistol mode (v17)
   let hidMode = localStorage.getItem(LS_HID_MODE) === '1';
   let hidRefocusTimer = null;
+  // Cadastro em batch (v22)
+  let cadastroInFlight = false;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
@@ -1590,6 +1592,73 @@
     return allSaldos;
   }
 
+  // Cadastra em batch os items "não vinculados" como rascunhos no WC + ativos no Tiny (v22)
+  async function cadastrarNovosNoSite() {
+    if (cadastroInFlight) return;
+    const candidatos = items.filter(i =>
+      !i.sku &&
+      (i.name || '').trim() &&
+      i.precoNormal != null && i.precoNormal !== '' && Number(i.precoNormal) > 0
+    );
+    if (candidatos.length === 0) {
+      toast('Nenhum item com nome+preço preenchidos', 'warn');
+      return;
+    }
+    const msg = candidatos.length === 1
+      ? `Criar 1 rascunho no site (${candidatos[0].name})?\nSKU vai ser gerado automaticamente. Você confere depois no painel WC.`
+      : `Criar ${candidatos.length} rascunhos no site?\nCada um vai pro WC como draft e pro Tiny ativo com o EAN bipado.\nVocê confere depois.`;
+    if (!confirm(msg)) return;
+
+    cadastroInFlight = true;
+    render();
+    let ok = 0, fail = 0;
+    const erros = [];
+
+    for (const item of candidatos) {
+      try {
+        const payload = {
+          nome: item.name.trim(),
+          preco: Number(item.precoNormal),
+          ...(item.precoPromo != null && item.precoPromo !== '' ? { preco_promo: Number(item.precoPromo) } : {}),
+          ...(item.ean && !isSyntheticId(item.ean) ? { ean: item.ean } : {}),
+          quantidade: Number(item.qty) || 0,
+        };
+        const r = await workerFetch('/produto-novo', { method: 'POST', body: payload });
+        // Linka item local ao SKU novo + dispara sync de estoque
+        item.sku = r.sku;
+        item.wc_id = r.wc_id;
+        item.wc_draft_url = r.wc_draft_url;
+        item.tiny_id = r.tiny_id;
+        if (item.synced_qty === undefined) item.synced_qty = 0;
+        item.sync_status = 'pending';
+        pendingSyncs.add(r.sku);
+        ok++;
+        saveItems();
+        render();
+      } catch (err) {
+        console.warn('[cadastro]', item.name, err);
+        item.sync_error = err.message;
+        erros.push(`${item.name}: ${err.message}`);
+        fail++;
+      }
+    }
+
+    cadastroInFlight = false;
+    // Dispara saldo pra todos os novos SKUs
+    if (pendingSyncs.size > 0) {
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(flushSync, 300);
+    }
+    // Refresh do catálogo pra que o novo apareça no eanIndex/skuIndex
+    fetchCatalogFromWorker({ fresh: true }).catch(()=>{});
+    render();
+    if (fail === 0) {
+      toast(`✨ ${ok} rascunho(s) criado(s) no site · estoque subindo...`);
+    } else {
+      toast(`✨ ${ok} criado(s) · ⚠ ${fail} falhou(aram) — ${erros[0] || ''}`, 'warn');
+    }
+  }
+
   async function vincularRemote(sku, ean) {
     try {
       await workerFetch('/vincular', { method: 'POST', body: { sku, ean } });
@@ -1612,7 +1681,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v21';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v22';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1636,7 +1705,8 @@
       const readyForCadastro = noSkuItems.filter(i => (i.name || '').trim() && i.precoNormal != null && i.precoNormal !== '').length;
       if (readyForCadastro > 0) {
         btnExportCadastros.style.display = 'block';
-        btnExportCadastros.textContent = `📦 Cadastrar novos (${readyForCadastro})`;
+        btnExportCadastros.textContent = `✨ Cadastrar no site (${readyForCadastro})`;
+        btnExportCadastros.disabled = !!cadastroInFlight;
       } else {
         btnExportCadastros.style.display = 'none';
       }
@@ -2431,7 +2501,7 @@
 
   btnRefreshCatalog.addEventListener('click', () => fetchCatalogFromWorker({ fresh: true }));
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
-  $('btn-export-cadastros').addEventListener('click', exportNovosCadastros);
+  $('btn-export-cadastros').addEventListener('click', cadastrarNovosNoSite);
 
   listSearchEl.addEventListener('input', () => {
     listFilter = listSearchEl.value;

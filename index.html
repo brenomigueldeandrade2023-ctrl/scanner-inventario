@@ -850,6 +850,55 @@
   .item-sync.syncing { background: rgba(212,175,106,0.12); color: var(--gold); }
   .item-sync.error { background: var(--danger-bg); color: var(--danger); cursor: help; }
   .item-sync.nolink { background: transparent; color: var(--text-dim); }
+
+  /* ---------- HID Pistol Mode (v17) ---------- */
+  .hid-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .hid-toggle {
+    flex: 1;
+    font-size: 13px;
+    padding: 9px 12px;
+  }
+  .hid-toggle.active {
+    background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+    color: #1a0f00;
+    border-color: var(--gold);
+    box-shadow: 0 0 12px var(--gold-glow);
+  }
+  .hid-status {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  body.hid-mode .hid-status {
+    color: var(--gold);
+    font-weight: 700;
+    animation: pulse-sync 1.4s ease-in-out infinite;
+  }
+  body.hid-mode #manual-ean {
+    border-color: var(--gold);
+    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+    box-shadow: 0 0 0 1px var(--gold-glow), 0 0 14px var(--gold-glow) inset;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--gold-2);
+    letter-spacing: 0.05em;
+  }
+  body.hid-mode #manual-ean::placeholder {
+    color: var(--gold-dark);
+    font-weight: 500;
+  }
+  body.hid-mode #manual-ean:focus {
+    border-color: var(--gold-2);
+    box-shadow: 0 0 0 2px var(--gold), 0 0 18px var(--gold-glow);
+  }
 </style>
 </head>
 <body>
@@ -859,7 +908,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v16</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v17</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -908,6 +957,10 @@
       <button id="btn-flip" class="btn-secondary" style="flex: 0 0 auto; display: none;">🔄</button>
     </div>
     <div id="active-mode-pill" class="mode-pill" style="display: none;">🔁 Modo: Estoque</div>
+    <div class="hid-row">
+      <button id="btn-hid-mode" class="btn-secondary hid-toggle" type="button">📱 Modo Pistola HID</button>
+      <span id="hid-status" class="hid-status">desligado</span>
+    </div>
     <div class="manual-entry">
       <input id="manual-ean" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="EAN manual (digite e Enter)" autocomplete="off">
       <button id="btn-manual-add" class="btn-secondary">+</button>
@@ -1010,6 +1063,7 @@
   const LS_CATALOG_OLD = 'inv_catalog_v1';
   const LS_CATALOG_META = 'inv_catalog_meta_v1';
   const LS_SESSION = 'inv_session_name_v1';
+  const LS_HID_MODE = 'inv_hid_mode_v1';
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_MS = 8000;
@@ -1039,6 +1093,9 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
+  // HID pistol mode (v17)
+  let hidMode = localStorage.getItem(LS_HID_MODE) === '1';
+  let hidRefocusTimer = null;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
@@ -1083,6 +1140,8 @@
   const syncIndicator = $('sync-indicator');
   const syncStatusText = $('sync-status-text');
   const syncStatusDetail = $('sync-status-detail');
+  const btnHidMode = $('btn-hid-mode');
+  const hidStatusEl = $('hid-status');
 
   // ---------- Persistence ----------
   function loadJSON(key, fallback) {
@@ -1346,6 +1405,37 @@
     }
   }
 
+  // ---------- HID Pistol Mode (v17) ----------
+  // Tags onde a Vânia digita de propósito (não devemos roubar foco)
+  const HID_INTERACTIVE = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+  function isHidInteractiveTarget(el) {
+    if (!el || el === inputManual) return false;
+    return HID_INTERACTIVE.has(el.tagName) || el.isContentEditable;
+  }
+
+  function refocusManual() {
+    if (!hidMode) return;
+    const ae = document.activeElement;
+    if (isHidInteractiveTarget(ae)) return; // ela tá editando algo de propósito
+    try { inputManual.focus({ preventScroll: true }); } catch { inputManual.focus(); }
+  }
+
+  function setHidMode(on) {
+    hidMode = !!on;
+    localStorage.setItem(LS_HID_MODE, hidMode ? '1' : '0');
+    document.body.classList.toggle('hid-mode', hidMode);
+    btnHidMode.classList.toggle('active', hidMode);
+    btnHidMode.textContent = hidMode ? '📱 Pistola ATIVA' : '📱 Modo Pistola HID';
+    hidStatusEl.textContent = hidMode ? '🎯 aguardando bipe' : 'desligado';
+    if (hidMode) {
+      refocusManual();
+      toast('🎯 Modo pistola ligado · aponte e bipe', 'success');
+    } else {
+      toast('Modo pistola desligado');
+    }
+  }
+
   async function vincularRemote(sku, ean) {
     try {
       await workerFetch('/vincular', { method: 'POST', body: { sku, ean } });
@@ -1368,7 +1458,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v16';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v17';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2082,9 +2172,39 @@
     if (!v) return;
     onScan(v);
     inputManual.value = '';
+    if (hidMode) {
+      // Mantém foco pro próximo bipe
+      clearTimeout(hidRefocusTimer);
+      hidRefocusTimer = setTimeout(refocusManual, 30);
+    }
   });
   inputManual.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); btnManualAdd.click(); }
+  });
+
+  // HID toggle
+  btnHidMode.addEventListener('click', () => setHidMode(!hidMode));
+
+  // Focus-lock: se o foco escapar pro body/coisa-não-editável, devolve pro input
+  inputManual.addEventListener('focusout', (e) => {
+    if (!hidMode) return;
+    if (isHidInteractiveTarget(e.relatedTarget)) return;
+    clearTimeout(hidRefocusTimer);
+    hidRefocusTimer = setTimeout(refocusManual, 60);
+  });
+  document.addEventListener('click', (e) => {
+    if (!hidMode) return;
+    if (isHidInteractiveTarget(e.target)) return;
+    if (e.target.closest('button')) return; // botões executam ação e devolvem foco
+    clearTimeout(hidRefocusTimer);
+    hidRefocusTimer = setTimeout(refocusManual, 60);
+  });
+  // Quando a aba volta ao foco (mobile background), restaura
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && hidMode) {
+      clearTimeout(hidRefocusTimer);
+      hidRefocusTimer = setTimeout(refocusManual, 200);
+    }
   });
 
   btnRefreshCatalog.addEventListener('click', () => fetchCatalogFromWorker({ fresh: true }));
@@ -2324,6 +2444,7 @@
   if (migrated > 0) saveItems();
 
   setWorkerStatus('syncing', 'Conectando ao Worker...');
+  setHidMode(hidMode); // aplica visual + foco se restaurado de localStorage
   render();
   if (!window.isSecureContext) toast('Atenção: câmera só funciona em HTTPS', 'warn');
 

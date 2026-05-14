@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v23</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1592,7 +1592,9 @@
     return allSaldos;
   }
 
-  // Cadastra em batch os items "não vinculados" como rascunhos no WC + ativos no Tiny (v22)
+  // Cadastra em batch os items + dispara chain de agentes IA pra cada um (v24)
+  // Pipeline: /produto-novo (cria draft) → /enrich (Researcher Gemini → Image Hunter
+  // → Composer Gemini → Publisher). Concurrency 3 pra não estourar Gemini RPM.
   async function cadastrarNovosNoSite() {
     if (cadastroInFlight) return;
     const candidatos = items.filter(i =>
@@ -1605,15 +1607,18 @@
       return;
     }
     const msg = candidatos.length === 1
-      ? `Criar 1 rascunho no site (${candidatos[0].name})?\nSKU vai ser gerado automaticamente. Você confere depois no painel WC.`
-      : `Criar ${candidatos.length} rascunhos no site?\nCada um vai pro WC como draft e pro Tiny ativo com o EAN bipado.\nVocê confere depois.`;
+      ? `Cadastrar 1 produto no site (${candidatos[0].name})?\n🤖 IA vai pesquisar notas + imagens + montar descrição.\nLeva ~25-35s.`
+      : `Cadastrar ${candidatos.length} produtos no site?\n🤖 IA pesquisa cada um (notas + imagens + descrição).\nLeva ~${Math.ceil(candidatos.length / 3) * 30}s no total (3 em paralelo).`;
     if (!confirm(msg)) return;
 
     cadastroInFlight = true;
     render();
-    let ok = 0, fail = 0;
+    let createdOk = 0, createFail = 0;
+    let publishedOk = 0, draftPending = 0, enrichErr = 0;
     const erros = [];
 
+    // FASE 1: cria todos no Tiny + WC draft (rápido, ~2s cada, sequencial pra evitar SKU collision)
+    toast(`📝 Criando ${candidatos.length} rascunho(s) no Tiny + WC...`);
     for (const item of candidatos) {
       try {
         const payload = {
@@ -1624,39 +1629,89 @@
           quantidade: Number(item.qty) || 0,
         };
         const r = await workerFetch('/produto-novo', { method: 'POST', body: payload });
-        // Linka item local ao SKU novo + dispara sync de estoque
         item.sku = r.sku;
         item.wc_id = r.wc_id;
         item.wc_draft_url = r.wc_draft_url;
         item.tiny_id = r.tiny_id;
+        item.enrich_status = 'pending'; // novo flag v24
         if (item.synced_qty === undefined) item.synced_qty = 0;
         item.sync_status = 'pending';
         pendingSyncs.add(r.sku);
-        ok++;
+        createdOk++;
         saveItems();
         render();
       } catch (err) {
         console.warn('[cadastro]', item.name, err);
         item.sync_error = err.message;
         erros.push(`${item.name}: ${err.message}`);
-        fail++;
+        createFail++;
       }
     }
 
+    if (createdOk === 0) {
+      cadastroInFlight = false;
+      render();
+      toast(`⚠ Nada foi criado — ${erros[0] || 'erro'}`, 'warn');
+      return;
+    }
+
+    // FASE 2: dispara chain de agentes pra cada item criado (concurrency 3)
+    toast(`🤖 ${createdOk} rascunho(s) criado(s) · IA pesquisando notas + imagens...`);
+    const toEnrich = candidatos.filter(i => i.sku && i.enrich_status === 'pending');
+
+    const concurrency = 3;
+    const queue = [...toEnrich];
+    async function enrichWorker() {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (!item) return;
+        item.enrich_status = 'enriching';
+        render();
+        try {
+          // Timeout client-side: 60s (Worker tem 30s CPU mas requests podem ter mais wall-time)
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 60000);
+          const r = await fetch(WORKER_URL + '/enrich', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wc_id: item.wc_id, sku: item.sku, nome: item.name }),
+            signal: ctrl.signal,
+          });
+          clearTimeout(tid);
+          const data = await r.json();
+          if (data.ok && data.status === 'publish') {
+            item.enrich_status = 'published';
+            item.enrich_details = data.details;
+            publishedOk++;
+          } else {
+            item.enrich_status = 'draft';
+            item.enrich_reason = data.reason || data.error;
+            draftPending++;
+          }
+        } catch (err) {
+          console.warn('[enrich]', item.name, err);
+          item.enrich_status = 'draft';
+          item.enrich_reason = err.name === 'AbortError' ? 'timeout 60s' : (err.message || 'unknown');
+          enrichErr++;
+        }
+        saveItems();
+        render();
+      }
+    }
+    await Promise.all(Array(Math.min(concurrency, queue.length)).fill(0).map(enrichWorker));
+
     cadastroInFlight = false;
-    // Dispara saldo pra todos os novos SKUs
     if (pendingSyncs.size > 0) {
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(flushSync, 300);
     }
-    // Refresh do catálogo pra que o novo apareça no eanIndex/skuIndex
     fetchCatalogFromWorker({ fresh: true }).catch(()=>{});
     render();
-    if (fail === 0) {
-      toast(`✨ ${ok} produto(s) criado(s) · 🪄 publicando no site automático...`);
-    } else {
-      toast(`✨ ${ok} criado(s) · ⚠ ${fail} falhou(aram) — ${erros[0] || ''}`, 'warn');
-    }
+    const summary = [];
+    if (publishedOk > 0) summary.push(`🎉 ${publishedOk} no ar`);
+    if (draftPending > 0) summary.push(`📝 ${draftPending} draft (Claudio enrich)`);
+    if (createFail > 0) summary.push(`⚠ ${createFail} falhou`);
+    toast('✨ ' + summary.join(' · '));
   }
 
   async function vincularRemote(sku, ean) {
@@ -1681,7 +1736,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v23';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1758,6 +1813,16 @@
           }
         } else {
           syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
+        }
+        // Badge de enrichment (v24)
+        if (it.enrich_status === 'enriching') {
+          syncBadge += ` <span class="item-sync syncing">🤖 IA pesquisando...</span>`;
+        } else if (it.enrich_status === 'published') {
+          const conf = it.enrich_details?.confianca;
+          syncBadge += ` <span class="item-sync synced">🎉 no site${conf ? ' ('+conf+')' : ''}</span>`;
+        } else if (it.enrich_status === 'draft') {
+          const r = it.enrich_reason || 'aguardando';
+          syncBadge += ` <span class="item-sync pending" title="${escapeHtml(r)}">📝 draft</span>`;
         }
         const skuHtml = it.sku ? `SKU: ${escapeHtml(it.sku)} · ` : '';
         const eanLabel = isSyntheticId(it.ean) ? (it.ean.startsWith('ai:') ? '🧠 IA' : '—') : `EAN: ${escapeHtml(it.ean)}`;

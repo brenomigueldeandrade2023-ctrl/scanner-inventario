@@ -1,5 +1,7 @@
-﻿.DS_Store
+.DS_Store
 Thumbs.db
 *.log
 .vscode/
 .idea/
+_cadastrar.py
+_*.py

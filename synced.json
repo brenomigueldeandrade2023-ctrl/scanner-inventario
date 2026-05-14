@@ -1,8 +1,10 @@
 {
   "version": 1,
-  "updated_at": "2026-05-14T01:00:00Z",
+  "updated_at": "2026-05-14T01:45:00Z",
   "note": "EANs ja persistidos no OLIST via API. Scanner consome este arquivo no init pra marcar SKUs como sincronizados.",
   "entries": {
-    "ARAB-0297": "6297001158456"
+    "ARAB-0297": "6297001158456",
+    "362H": "634240397417",
+    "519M": "6290360599304"
   }
 }

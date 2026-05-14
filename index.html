@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24.1</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v24.2</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1456,15 +1456,15 @@
       updateSyncStatusBar();
       render();
       try {
-        // (v24-fix) PRE-CHECK: antes de mandar delta, valida saldo atual OLIST.
-        // Se OLIST já bate com qty local, NÃO envia /sync (evita duplicar quando
-        // tentativa anterior chegou mas response falhou cosmeticamente).
+        // (v24.2) PRE-CHECK: antes de mandar delta, valida saldo atual OLIST.
+        // SÓ usa o saldo se o Worker confirmou que VEIO (knownSkus). Senão segue sync.
         try {
           const found = catalog.find(p => p.sku === sku);
           if (found) {
             const saldosCheck = await workerFetch('/saldos', { method: 'POST', body: { ids: [String(found.id)] } });
-            const olistSaldo = Number(saldosCheck?.saldos?.[sku] ?? NaN);
-            if (Number.isFinite(olistSaldo) && olistSaldo === targetQty) {
+            const skuConfirmed = saldosCheck?.saldos && (sku in saldosCheck.saldos);
+            const olistSaldo = skuConfirmed ? Number(saldosCheck.saldos[sku]) : NaN;
+            if (skuConfirmed && Number.isFinite(olistSaldo) && olistSaldo === targetQty) {
               item.synced_qty = olistSaldo;
               item.sync_status = 'synced';
               item.sync_error = null;
@@ -1544,36 +1544,53 @@
     }
   }
 
-  // Busca saldo atual de cada produto no OLIST e seed/atualiza items locais (v21)
-  // Resolve "qty local 0 vs OLIST 4" — adota saldo OLIST como ponto de partida da contagem.
+  // Busca saldo atual de cada produto no OLIST (v24.2)
+  // CRÍTICO: distingue "saldo retornado pelo Worker" de "saldo não veio".
+  // Se o batch teve falhas (Tiny rate-limit), NÃO usa saldo=0 falso pra
+  // reconciliar — preserva o estado local pros SKUs que não vieram.
   async function fetchSaldosFromWorker() {
     if (!catalog || catalog.length === 0) return {};
     const ids = catalog.map(p => String(p.id)).filter(Boolean);
+    const idToSku = new Map(catalog.map(p => [String(p.id), p.sku]));
     const batchSize = 40;
     const allSaldos = {};
-    let batchErrors = 0;
+    const knownSkus = new Set();      // SKUs cujos saldos CONFIRMADAMENTE vieram do Worker
+    let totalFailed = 0;
     for (let i = 0; i < ids.length; i += batchSize) {
       const batch = ids.slice(i, i + batchSize);
       try {
         const data = await workerFetch('/saldos', { method: 'POST', body: { ids: batch } });
-        Object.assign(allSaldos, data.saldos || {});
+        const got = data.saldos || {};
+        Object.assign(allSaldos, got);
+        for (const sku of Object.keys(got)) knownSkus.add(sku);
+        if (data.failed > 0) totalFailed += data.failed;
+        // SKUs que estavam no batch mas não vieram na resposta = falha silenciosa
+        for (const id of batch) {
+          const sku = idToSku.get(id);
+          if (sku && !(sku in got)) totalFailed++;
+        }
       } catch (err) {
-        batchErrors++;
         console.warn('[saldos] batch failed:', err);
+        totalFailed += batch.length;
       }
     }
-    if (batchErrors > 0) {
-      toast(`⚠ Saldo OLIST: ${batchErrors} batch(es) falhou — alguns produtos podem começar do zero`, 'warn');
+    if (totalFailed > 0) {
+      toast(`⚠ Tiny rate-limit: ${totalFailed} saldo(s) não vieram · só ${knownSkus.size} confirmados`, 'warn');
+      console.warn('[saldos] Reconciliação parcial. SKUs sem dado confiável preservam estado local.');
     }
     // Anexa ao catálogo + pré-popula/atualiza items locais
     let seeded = 0, refreshed = 0;
     for (const p of catalog) {
+      // Só considera dados de SKUs que VIERAM do Worker (knownSkus)
+      if (!knownSkus.has(p.sku)) {
+        // Não veio → mantém olist_saldo anterior (se existir), não pre-seed nem reconcilia
+        continue;
+      }
       const saldo = Number(allSaldos[p.sku] || 0);
       p.olist_saldo = saldo;
       if (saldo === 0) continue;
       const existing = items.find(it => it.sku === p.sku);
       if (!existing) {
-        // Adota o saldo OLIST como contagem inicial — Vânia vê o que OLIST tem
         items.push({
           ean: p.ean || ('sku:' + p.sku),
           sku: p.sku,
@@ -1588,10 +1605,6 @@
         existing.saldo_olist = saldo;
         const localQty = Number(existing.qty) || 0;
         const localSynced = Number(existing.synced_qty) || 0;
-        // (1) v24-fix: RECONCILIAÇÃO CRÍTICA — se saldo OLIST já bate com qty local,
-        // marca como synced independente do status anterior. Resolve casos onde
-        // /sync chegou no Tiny mas resposta falhou (ERRO cosmético no scanner →
-        // se não tratar, próximo flush duplicaria o saldo).
         if (localQty === saldo) {
           existing.synced_qty = saldo;
           existing.sync_status = 'synced';
@@ -1599,12 +1612,10 @@
           pendingSyncs.delete(existing.sku);
           if (localSynced !== saldo) refreshed++;
         } else if (existing.sync_status === 'synced' && localQty === localSynced) {
-          // (2) Sem delta pendente local — atualiza qty pra refletir mudança externa
           existing.qty = saldo;
           existing.synced_qty = saldo;
           refreshed++;
         }
-        // (3) Senão: tem delta pendente legítimo, preserva qty da Vânia.
       }
     }
     saveCatalog();
@@ -1763,7 +1774,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24.1';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v24.2';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();

@@ -208,6 +208,102 @@
   .session-row input:focus { outline: none; }
   .session-row input::placeholder { color: var(--text-dim); font-style: italic; }
 
+  /* Mode cards (Estoque / Novo) */
+  .mode-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .mode-card {
+    background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface) 100%);
+    border: 1.5px solid var(--border-strong);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    min-height: 76px;
+    color: var(--text);
+    font-family: inherit;
+    transition: transform 0.08s, border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .mode-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 0% 50%, var(--accent-glow) 0%, transparent 60%);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .mode-card:active { transform: scale(0.98); }
+  .mode-card .mode-icon {
+    font-size: 30px;
+    line-height: 1;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 6px var(--accent-glow));
+    z-index: 1;
+  }
+  .mode-card .mode-body { flex: 1; min-width: 0; z-index: 1; }
+  .mode-card .mode-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: 'Cormorant Garamond', serif;
+  }
+  .mode-card .mode-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+  .mode-card::after {
+    content: '📷';
+    font-size: 18px;
+    opacity: 0.4;
+    z-index: 1;
+  }
+
+  .mode-card.mode-estoque {
+    --accent: var(--gold);
+    --accent-glow: var(--gold-glow);
+  }
+  .mode-card.mode-estoque:hover { border-color: var(--gold); }
+
+  .mode-card.mode-novo {
+    --accent: var(--warn);
+    --accent-glow: rgba(232, 160, 74, 0.15);
+  }
+  .mode-card.mode-novo:hover { border-color: var(--warn); }
+
+  .mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    animation: pillPulse 2s ease-in-out infinite;
+  }
+  .mode-pill.estoque { border-color: var(--gold); color: var(--gold); }
+  .mode-pill.novo { border-color: var(--warn); color: var(--warn); }
+  @keyframes pillPulse {
+    0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 0 6px transparent; opacity: 0.85; }
+  }
+
   /* Scanner */
   #video-wrap {
     position: relative;
@@ -708,7 +804,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v14</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v15</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -736,10 +832,27 @@
       </div>
       <div id="scan-status">📡 detectando...</div>
     </div>
-    <div class="btn-row" style="margin-bottom: 10px;">
-      <button id="btn-camera" class="btn-primary">📷 Iniciar câmera</button>
+    <div class="mode-cards" id="mode-cards">
+      <button id="btn-mode-estoque" class="mode-card mode-estoque" type="button">
+        <div class="mode-icon">🔁</div>
+        <div class="mode-body">
+          <div class="mode-title">Bipar pra estoque</div>
+          <div class="mode-sub">Produto cadastrado · soma quantidade</div>
+        </div>
+      </button>
+      <button id="btn-mode-novo" class="mode-card mode-novo" type="button">
+        <div class="mode-icon">✨</div>
+        <div class="mode-body">
+          <div class="mode-title">Bipar pra cadastrar</div>
+          <div class="mode-sub">Produto novo · cadastra no OLIST</div>
+        </div>
+      </button>
+    </div>
+    <div class="btn-row" id="cam-controls" style="display: none; margin-bottom: 10px;">
+      <button id="btn-camera-stop" class="btn-secondary">⏹ Parar câmera</button>
       <button id="btn-flip" class="btn-secondary" style="flex: 0 0 auto; display: none;">🔄</button>
     </div>
+    <div id="active-mode-pill" class="mode-pill" style="display: none;">🔁 Modo: Estoque</div>
     <div class="manual-entry">
       <input id="manual-ean" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="EAN manual (digite e Enter)" autocomplete="off">
       <button id="btn-manual-add" class="btn-secondary">+</button>
@@ -863,13 +976,19 @@
   let lastScannedEan = null;
   let lastScannedAt = 0;
   let activeEan = null;
+  let scanMode = 'estoque'; // 'estoque' | 'novo'
   let lastUndoableScan = null; // {ean, wasNew, qtyBefore}
   let listFilter = '';
   let torchOn = false;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
-  const btnCamera = $('btn-camera');
+  const btnModeEstoque = $('btn-mode-estoque');
+  const btnModeNovo = $('btn-mode-novo');
+  const btnCameraStop = $('btn-camera-stop');
+  const modeCards = $('mode-cards');
+  const camControls = $('cam-controls');
+  const modePill = $('active-mode-pill');
   const btnFlip = $('btn-flip');
   const btnTorch = $('btn-torch');
   const videoWrap = $('video-wrap');
@@ -1013,7 +1132,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v14';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v15';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -1144,6 +1263,24 @@
     render();
     const isNewUnknown = !existing && !prod;
     showLastScan(ean, isNewUnknown);
+
+    // Mode-aware toast
+    const item = items.find(i => i.ean === ean);
+    if (prod) {
+      // Produto cadastrado
+      if (scanMode === 'novo') {
+        toast(`⚠ Já cadastrado · somou +1 mesmo (${item.qty})`, 'warn');
+      } else {
+        toast(`✓ +1 ${prod.name || prod.sku} (total: ${item.qty})`);
+      }
+    } else {
+      // Produto NÃO cadastrado
+      if (scanMode === 'estoque') {
+        toast(`⚠ EAN não cadastrado · troque pro modo NOVO`, 'warn');
+      } else {
+        toast(`✨ Produto novo · preencha nome + P abaixo`);
+      }
+    }
 
     setTimeout(() => {
       const el = itemList.querySelector(`[data-idx="${items.findIndex(i => i.ean === ean)}"]`);
@@ -1285,9 +1422,11 @@
     await ensureAudio();
     try {
       videoWrap.classList.add('active');
-      btnCamera.textContent = '⏹ Parar câmera';
-      btnCamera.classList.remove('btn-primary');
-      btnCamera.classList.add('btn-secondary');
+      modeCards.style.display = 'none';
+      camControls.style.display = 'flex';
+      modePill.style.display = 'inline-flex';
+      modePill.className = 'mode-pill ' + scanMode;
+      modePill.textContent = scanMode === 'estoque' ? '🔁 Modo: Estoque' : '✨ Modo: Cadastrar novo';
       scanStatus.textContent = '📡 iniciando câmera...';
 
       if (cameras.length === 0) {
@@ -1373,9 +1512,9 @@
   async function stopCamera() {
     if (scanner) { try { if (scanner.isScanning) await scanner.stop(); } catch (e) { console.warn('stop:', e); } }
     videoWrap.classList.remove('active');
-    btnCamera.textContent = '📷 Iniciar câmera';
-    btnCamera.classList.add('btn-primary');
-    btnCamera.classList.remove('btn-secondary');
+    modeCards.style.display = 'flex';
+    camControls.style.display = 'none';
+    modePill.style.display = 'none';
     btnFlip.style.display = 'none';
     btnTorch.hidden = true;
     torchOn = false;
@@ -1661,10 +1800,20 @@
     render();
   });
 
-  btnCamera.addEventListener('click', async () => {
-    if (videoWrap.classList.contains('active')) await stopCamera();
-    else await startCamera();
-  });
+  async function setModeAndStart(mode) {
+    scanMode = mode;
+    if (videoWrap.classList.contains('active')) {
+      // Já tá com câmera aberta — só atualiza pill
+      modePill.className = 'mode-pill ' + scanMode;
+      modePill.textContent = scanMode === 'estoque' ? '🔁 Modo: Estoque' : '✨ Modo: Cadastrar novo';
+      toast(scanMode === 'estoque' ? '🔁 Modo Estoque' : '✨ Modo Cadastrar novo');
+    } else {
+      await startCamera();
+    }
+  }
+  btnModeEstoque.addEventListener('click', () => setModeAndStart('estoque'));
+  btnModeNovo.addEventListener('click', () => setModeAndStart('novo'));
+  btnCameraStop.addEventListener('click', stopCamera);
   btnFlip.addEventListener('click', flipCamera);
   btnTorch.addEventListener('click', toggleTorch);
 

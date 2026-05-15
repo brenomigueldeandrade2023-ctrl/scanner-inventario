@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.4</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.5</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1106,7 +1106,7 @@
   <button id="btn-clear" class="btn-danger">🗑 Limpar</button>
 </div>
 
-<!-- v25.4: modal de export pro Claudio -->
+<!-- v25.5: modal de export pro Claudio -->
 <div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;padding:20px;overflow:auto">
   <div style="max-width:600px;margin:40px auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;padding:18px;color:var(--text)">
     <h3 style="margin:0 0 10px;font-family:'Cormorant Garamond',serif;color:var(--gold)">📋 Exportar tudo pro Claudio</h3>
@@ -1137,12 +1137,12 @@
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
-  const SYNC_RETRY_MAX_MS = 600000;       // v25.4: backoff exponencial cap em 10 min
+  const SYNC_RETRY_MAX_MS = 600000;       // v25.5: backoff exponencial cap em 10 min
   const SEARCH_LIMIT = 6;
-  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.4: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v25.4';
+  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.5: só marca OFFLINE após 3 falhas seguidas
+  const APP_VERSION = 'v25.5';
 
-  // v25.4: gera UUID curto pra idempotency key por bipe (persistido no item)
+  // v25.5: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
@@ -1174,7 +1174,7 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
-  // v25.4: contador de falhas pra não marcar OFFLINE no primeiro tropeço
+  // v25.5: contador de falhas pra não marcar OFFLINE no primeiro tropeço
   let consecutiveFails = 0;
   let nextRetryAt = 0;              // timestamp ms — respeita Retry-After do Worker
   let lastErrorDetail = '';
@@ -1334,8 +1334,8 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
-  // ---------- Worker sync (v16 → v25.4) ----------
-  // v25.4: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
+  // ---------- Worker sync (v16 → v25.5) ----------
+  // v25.5: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
   function setWorkerStatus(state, detail) {
     if (state === 'online' || state === 'syncing') {
       consecutiveFails = 0;
@@ -1393,7 +1393,7 @@
     syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
   }
 
-  // v25.4: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
+  // v25.5: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
   // outras chamadas pularem até o tempo combinado (cooperative backoff).
   async function workerFetch(path, opts = {}) {
     // Se Worker pediu pra esperar e ainda não é hora, falha rápido sem bater na rede
@@ -1476,7 +1476,7 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
-      // v25.4: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
+      // v25.5: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
       // 599 produtos no boot esgota e dispara punishment mode. Pre-seed agora é
       // lazy: só quando a Vânia bipar um item desconhecido OU apertar Atualizar.
       // Quem chamou fetchCatalogFromWorker com opts.withSaldos=true força o seed.
@@ -1514,7 +1514,7 @@
     syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
   }
 
-  // v25.4.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
+  // v25.5.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
   // Pre-check (barato via cache 90s) reconcilia 3 cenários sem chamar /sync:
   //   a) OLIST == target  → marca synced (sync já passou, talvez resposta perdida)
   //   b) OLIST  > target  → alguém aplicou por fora (eu via API ou outro device).
@@ -1546,7 +1546,7 @@
         item.op_id = null;
         continue;
       }
-      // v25.4.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
+      // v25.5.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
       // Reconcilia se já tá certo OU se alguém aplicou por fora.
       try {
         const found = catalog.find(p => p.sku === sku);
@@ -1583,7 +1583,7 @@
           }
         }
       } catch (chkErr) { /* pre-check é best-effort, segue pro /sync */ }
-      // v25.4: garante opId estável pro retry replayar
+      // v25.5: garante opId estável pro retry replayar
       if (!item.op_id) item.op_id = genOpId();
       item.sync_status = 'syncing';
       saveItems();
@@ -1671,7 +1671,7 @@
     }
   }
 
-  // v25.4.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
+  // v25.5.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
   // — tipicamente 5-30 SKUs em vez de 599. Cabe em 1 batch (40 max) e usa cache /saldos
   // sempre que possível. opts.fullScan=true volta ao comportamento antigo (catálogo todo)
   // — usado só em modo debug, evitar pq esgota cota Tiny.
@@ -1922,7 +1922,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.4';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.5';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2049,7 +2049,17 @@
     lastScannedAt = now;
 
     const prod = eanIndex.get(ean);
-    const existing = items.find(i => i.ean === ean);
+    // v25.5: procura por EAN OU por SKU. Cobre o cenário "cadastrei sem EAN
+    // antes (entry sintética 'sku:XXX') e agora bipo o EAN real" — sem essa
+    // dedup, criava 2 entries pro mesmo SKU e gerava sync conflitante.
+    let existing = items.find(i => i.ean === ean);
+    if (!existing && prod) {
+      existing = items.find(i => i.sku === prod.sku);
+      if (existing && existing.ean !== ean) {
+        // Substitui EAN sintético/antigo pelo real bipado agora
+        existing.ean = ean;
+      }
+    }
 
     // Track for undo
     lastUndoableScan = {
@@ -2098,7 +2108,7 @@
       // Produto NÃO cadastrado
       if (scanMode === 'estoque') {
         toast(`⚠ EAN não cadastrado · verificando catálogo...`, 'warn');
-        // v25.4: cenário "cadastrei há pouco mas catálogo local tava velho".
+        // v25.5: cenário "cadastrei há pouco mas catálogo local tava velho".
         // Tenta refresh em background. Se EAN aparecer após refresh, vincula auto.
         tryAutoLinkAfterCatalogRefresh(ean);
       } else {
@@ -2112,7 +2122,7 @@
     }, 10);
   }
 
-  // v25.4: vinculação automática quando EAN bipado não tava no catálogo local
+  // v25.5: vinculação automática quando EAN bipado não tava no catálogo local
   // mas pode estar no Worker (cadastro recente em outro device, por exemplo).
   async function tryAutoLinkAfterCatalogRefresh(ean) {
     try {
@@ -2793,7 +2803,7 @@
     }
   });
 
-  // v25.4: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
+  // v25.5: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
   // (no boot automático isso é skipado pra não esgotar cota Tiny)
   btnRefreshCatalog.addEventListener('click', () => {
     nextRetryAt = 0; // limpa backoff em ação manual
@@ -3002,7 +3012,7 @@
     }
   });
 
-  // v25.4: export completo pra Claudio processar manualmente via API
+  // v25.5: export completo pra Claudio processar manualmente via API
   function buildExportPayload() {
     const session = sessionName || 'sem-nome';
     const ts = new Date().toLocaleString('pt-BR');
@@ -3104,6 +3114,47 @@
     if (it.sync_status === undefined) { it.sync_status = it.sku ? 'idle' : 'idle'; }
     if (it.sync_status === 'syncing') { it.sync_status = 'pending'; } // session morreu mid-sync
   }
+
+  // v25.5: dedupar entries com MESMO SKU (bug pre-v25.5 que criava 2 entries quando
+  // o produto era cadastrado sem EAN real e depois bipava o EAN do frasco).
+  // Estratégia: pra cada grupo de SKU duplicado, manter o item com EAN REAL (numérico),
+  // somar qty + synced_qty dos outros, e descartar duplicatas sintéticas.
+  const skuGroups = new Map();
+  for (const it of items) {
+    if (!it.sku) continue;
+    if (!skuGroups.has(it.sku)) skuGroups.set(it.sku, []);
+    skuGroups.get(it.sku).push(it);
+  }
+  let dedupedCount = 0;
+  for (const [sku, group] of skuGroups) {
+    if (group.length <= 1) continue;
+    // Prefere o item com EAN real (não-sintético) como base
+    const real = group.find(it => it.ean && !it.ean.startsWith('sku:')) || group[0];
+    let mergedQty = 0;
+    let mergedSynced = 0;
+    let saldoOlist = 0;
+    for (const it of group) {
+      mergedQty += Number(it.qty) || 0;
+      mergedSynced += Number(it.synced_qty) || 0;
+      if (Number(it.saldo_olist) > saldoOlist) saldoOlist = Number(it.saldo_olist);
+    }
+    real.qty = mergedQty;
+    real.synced_qty = mergedSynced;
+    real.saldo_olist = saldoOlist;
+    if (mergedQty !== mergedSynced) real.sync_status = 'pending';
+    // Remove os duplicados (mantém apenas o real)
+    for (const it of group) {
+      if (it !== real) {
+        const idx = items.indexOf(it);
+        if (idx !== -1) { items.splice(idx, 1); dedupedCount++; }
+      }
+    }
+  }
+  if (dedupedCount > 0) {
+    console.log(`[migration v25.5] ${dedupedCount} entries duplicadas mergeadas`);
+    migrated++;
+  }
+
   if (migrated > 0) saveItems();
 
   setWorkerStatus('syncing', 'Conectando ao Worker...');

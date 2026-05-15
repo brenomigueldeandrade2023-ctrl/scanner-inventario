@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.1</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.3</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1123,12 +1123,12 @@
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
-  const SYNC_RETRY_MAX_MS = 600000;       // v25.1: backoff exponencial cap em 10 min
+  const SYNC_RETRY_MAX_MS = 600000;       // v25.3: backoff exponencial cap em 10 min
   const SEARCH_LIMIT = 6;
-  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.1: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v25.1';
+  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.3: só marca OFFLINE após 3 falhas seguidas
+  const APP_VERSION = 'v25.3';
 
-  // v25.1: gera UUID curto pra idempotency key por bipe (persistido no item)
+  // v25.3: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
@@ -1160,7 +1160,7 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
-  // v25.1: contador de falhas pra não marcar OFFLINE no primeiro tropeço
+  // v25.3: contador de falhas pra não marcar OFFLINE no primeiro tropeço
   let consecutiveFails = 0;
   let nextRetryAt = 0;              // timestamp ms — respeita Retry-After do Worker
   let lastErrorDetail = '';
@@ -1315,8 +1315,8 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
-  // ---------- Worker sync (v16 → v25.1) ----------
-  // v25.1: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
+  // ---------- Worker sync (v16 → v25.3) ----------
+  // v25.3: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
   function setWorkerStatus(state, detail) {
     if (state === 'online' || state === 'syncing') {
       consecutiveFails = 0;
@@ -1374,7 +1374,7 @@
     syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
   }
 
-  // v25.1: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
+  // v25.3: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
   // outras chamadas pularem até o tempo combinado (cooperative backoff).
   async function workerFetch(path, opts = {}) {
     // Se Worker pediu pra esperar e ainda não é hora, falha rápido sem bater na rede
@@ -1457,7 +1457,7 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
-      // v25.1: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
+      // v25.3: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
       // 599 produtos no boot esgota e dispara punishment mode. Pre-seed agora é
       // lazy: só quando a Vânia bipar um item desconhecido OU apertar Atualizar.
       // Quem chamou fetchCatalogFromWorker com opts.withSaldos=true força o seed.
@@ -1495,7 +1495,7 @@
     syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
   }
 
-  // v25.1.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
+  // v25.3.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
   // Pre-check (barato via cache 90s) reconcilia 3 cenários sem chamar /sync:
   //   a) OLIST == target  → marca synced (sync já passou, talvez resposta perdida)
   //   b) OLIST  > target  → alguém aplicou por fora (eu via API ou outro device).
@@ -1527,7 +1527,7 @@
         item.op_id = null;
         continue;
       }
-      // v25.1.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
+      // v25.3.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
       // Reconcilia se já tá certo OU se alguém aplicou por fora.
       try {
         const found = catalog.find(p => p.sku === sku);
@@ -1564,7 +1564,7 @@
           }
         }
       } catch (chkErr) { /* pre-check é best-effort, segue pro /sync */ }
-      // v25.1: garante opId estável pro retry replayar
+      // v25.3: garante opId estável pro retry replayar
       if (!item.op_id) item.op_id = genOpId();
       item.sync_status = 'syncing';
       saveItems();
@@ -1652,7 +1652,7 @@
     }
   }
 
-  // v25.1.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
+  // v25.3.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
   // — tipicamente 5-30 SKUs em vez de 599. Cabe em 1 batch (40 max) e usa cache /saldos
   // sempre que possível. opts.fullScan=true volta ao comportamento antigo (catálogo todo)
   // — usado só em modo debug, evitar pq esgota cota Tiny.
@@ -1903,7 +1903,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.1';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.3';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2078,7 +2078,10 @@
     } else {
       // Produto NÃO cadastrado
       if (scanMode === 'estoque') {
-        toast(`⚠ EAN não cadastrado · troque pro modo NOVO`, 'warn');
+        toast(`⚠ EAN não cadastrado · verificando catálogo...`, 'warn');
+        // v25.3: cenário "cadastrei há pouco mas catálogo local tava velho".
+        // Tenta refresh em background. Se EAN aparecer após refresh, vincula auto.
+        tryAutoLinkAfterCatalogRefresh(ean);
       } else {
         toast(`✨ Produto novo · preencha nome + P abaixo`);
       }
@@ -2088,6 +2091,46 @@
       const el = itemList.querySelector(`[data-idx="${items.findIndex(i => i.ean === ean)}"]`);
       if (el) el.classList.add('pulse');
     }, 10);
+  }
+
+  // v25.3: vinculação automática quando EAN bipado não tava no catálogo local
+  // mas pode estar no Worker (cadastro recente em outro device, por exemplo).
+  async function tryAutoLinkAfterCatalogRefresh(ean) {
+    try {
+      const data = await workerFetch('/produtos?fresh=1');
+      const produtos = (data.produtos || []).map(p => ({
+        sku: String(p.sku || '').trim(),
+        name: String(p.nome || '').trim(),
+        ean: String(p.gtin || '').trim(),
+        _origEan: String(p.gtin || '').trim(),
+        id: p.id,
+        preco: p.preco,
+      })).filter(p => p.sku);
+      catalog = produtos;
+      saveCatalog();
+      rebuildIndexes();
+      const prodNow = eanIndex.get(ean);
+      if (!prodNow) {
+        toast(`⚠ EAN ${ean} não está em nenhum produto cadastrado. Use modo NOVO ou vincule manualmente.`, 'warn');
+        render();
+        return;
+      }
+      // Bingo: catálogo desatualizado. Vincula no item local.
+      const it = items.find(i => i.ean === ean);
+      if (it) {
+        it.sku = prodNow.sku;
+        it.name = prodNow.name || it.name;
+        if (it.synced_qty === undefined) it.synced_qty = 0;
+        it.sync_status = 'pending';
+        saveItems();
+        queueSync(prodNow.sku);
+        toast(`✓ Vinculado: ${prodNow.name || prodNow.sku}`, 'success');
+        render();
+      }
+    } catch (err) {
+      console.warn('[auto-refresh]', err);
+      toast(`⚠ Não consegui atualizar catálogo: ${err.message}`, 'warn');
+    }
   }
 
   function undoLastScan() {
@@ -2731,7 +2774,7 @@
     }
   });
 
-  // v25.1: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
+  // v25.3: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
   // (no boot automático isso é skipado pra não esgotar cota Tiny)
   btnRefreshCatalog.addEventListener('click', () => {
     nextRetryAt = 0; // limpa backoff em ação manual

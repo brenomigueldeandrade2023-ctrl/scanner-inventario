@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.3</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.4</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1102,7 +1102,21 @@
     <span id="sync-status-text">✓ Sincronizado</span>
     <span id="sync-status-detail"></span>
   </div>
+  <button id="btn-export-claudio" class="btn-primary" style="flex:0 0 auto">📋 Copiar pro Claudio</button>
   <button id="btn-clear" class="btn-danger">🗑 Limpar</button>
+</div>
+
+<!-- v25.4: modal de export pro Claudio -->
+<div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;padding:20px;overflow:auto">
+  <div style="max-width:600px;margin:40px auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;padding:18px;color:var(--text)">
+    <h3 style="margin:0 0 10px;font-family:'Cormorant Garamond',serif;color:var(--gold)">📋 Exportar tudo pro Claudio</h3>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">Selecione tudo e copie. Cola na conversa do chat.</p>
+    <textarea id="export-textarea" readonly style="width:100%;height:60vh;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:Menlo,Consolas,monospace;font-size:11px;line-height:1.4"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="export-copy" class="btn-primary" style="flex:1">📋 Copiar tudo</button>
+      <button id="export-close" class="btn-danger" style="flex:0 0 auto">Fechar</button>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -1123,12 +1137,12 @@
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
-  const SYNC_RETRY_MAX_MS = 600000;       // v25.3: backoff exponencial cap em 10 min
+  const SYNC_RETRY_MAX_MS = 600000;       // v25.4: backoff exponencial cap em 10 min
   const SEARCH_LIMIT = 6;
-  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.3: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v25.3';
+  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.4: só marca OFFLINE após 3 falhas seguidas
+  const APP_VERSION = 'v25.4';
 
-  // v25.3: gera UUID curto pra idempotency key por bipe (persistido no item)
+  // v25.4: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
@@ -1160,7 +1174,7 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
-  // v25.3: contador de falhas pra não marcar OFFLINE no primeiro tropeço
+  // v25.4: contador de falhas pra não marcar OFFLINE no primeiro tropeço
   let consecutiveFails = 0;
   let nextRetryAt = 0;              // timestamp ms — respeita Retry-After do Worker
   let lastErrorDetail = '';
@@ -1208,6 +1222,11 @@
   const listSearchEl = $('list-search');
   const warnNoSku = $('warn-no-sku');
   const btnClear = $('btn-clear');
+  const btnExportClaudio = $('btn-export-claudio');
+  const exportModal = $('export-modal');
+  const exportTextarea = $('export-textarea');
+  const exportCopy = $('export-copy');
+  const exportClose = $('export-close');
   const stats = $('stats');
   const toastEl = $('toast');
   const syncIndicator = $('sync-indicator');
@@ -1315,8 +1334,8 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
-  // ---------- Worker sync (v16 → v25.3) ----------
-  // v25.3: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
+  // ---------- Worker sync (v16 → v25.4) ----------
+  // v25.4: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
   function setWorkerStatus(state, detail) {
     if (state === 'online' || state === 'syncing') {
       consecutiveFails = 0;
@@ -1374,7 +1393,7 @@
     syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
   }
 
-  // v25.3: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
+  // v25.4: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
   // outras chamadas pularem até o tempo combinado (cooperative backoff).
   async function workerFetch(path, opts = {}) {
     // Se Worker pediu pra esperar e ainda não é hora, falha rápido sem bater na rede
@@ -1457,7 +1476,7 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
-      // v25.3: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
+      // v25.4: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
       // 599 produtos no boot esgota e dispara punishment mode. Pre-seed agora é
       // lazy: só quando a Vânia bipar um item desconhecido OU apertar Atualizar.
       // Quem chamou fetchCatalogFromWorker com opts.withSaldos=true força o seed.
@@ -1495,7 +1514,7 @@
     syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
   }
 
-  // v25.3.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
+  // v25.4.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
   // Pre-check (barato via cache 90s) reconcilia 3 cenários sem chamar /sync:
   //   a) OLIST == target  → marca synced (sync já passou, talvez resposta perdida)
   //   b) OLIST  > target  → alguém aplicou por fora (eu via API ou outro device).
@@ -1527,7 +1546,7 @@
         item.op_id = null;
         continue;
       }
-      // v25.3.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
+      // v25.4.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
       // Reconcilia se já tá certo OU se alguém aplicou por fora.
       try {
         const found = catalog.find(p => p.sku === sku);
@@ -1564,7 +1583,7 @@
           }
         }
       } catch (chkErr) { /* pre-check é best-effort, segue pro /sync */ }
-      // v25.3: garante opId estável pro retry replayar
+      // v25.4: garante opId estável pro retry replayar
       if (!item.op_id) item.op_id = genOpId();
       item.sync_status = 'syncing';
       saveItems();
@@ -1652,7 +1671,7 @@
     }
   }
 
-  // v25.3.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
+  // v25.4.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
   // — tipicamente 5-30 SKUs em vez de 599. Cabe em 1 batch (40 max) e usa cache /saldos
   // sempre que possível. opts.fullScan=true volta ao comportamento antigo (catálogo todo)
   // — usado só em modo debug, evitar pq esgota cota Tiny.
@@ -1903,7 +1922,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.3';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.4';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2079,7 +2098,7 @@
       // Produto NÃO cadastrado
       if (scanMode === 'estoque') {
         toast(`⚠ EAN não cadastrado · verificando catálogo...`, 'warn');
-        // v25.3: cenário "cadastrei há pouco mas catálogo local tava velho".
+        // v25.4: cenário "cadastrei há pouco mas catálogo local tava velho".
         // Tenta refresh em background. Se EAN aparecer após refresh, vincula auto.
         tryAutoLinkAfterCatalogRefresh(ean);
       } else {
@@ -2093,7 +2112,7 @@
     }, 10);
   }
 
-  // v25.3: vinculação automática quando EAN bipado não tava no catálogo local
+  // v25.4: vinculação automática quando EAN bipado não tava no catálogo local
   // mas pode estar no Worker (cadastro recente em outro device, por exemplo).
   async function tryAutoLinkAfterCatalogRefresh(ean) {
     try {
@@ -2774,7 +2793,7 @@
     }
   });
 
-  // v25.3: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
+  // v25.4: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
   // (no boot automático isso é skipado pra não esgotar cota Tiny)
   btnRefreshCatalog.addEventListener('click', () => {
     nextRetryAt = 0; // limpa backoff em ação manual
@@ -2982,6 +3001,77 @@
       showLastScan(activeEan, false);
     }
   });
+
+  // v25.4: export completo pra Claudio processar manualmente via API
+  function buildExportPayload() {
+    const session = sessionName || 'sem-nome';
+    const ts = new Date().toLocaleString('pt-BR');
+    const ua = navigator.userAgent.slice(0, 80);
+    const linked = items.filter(i => i.sku);
+    const unlinked = items.filter(i => !i.sku);
+    const dirty = linked.filter(i => (Number(i.qty)||0) !== (Number(i.synced_qty)||0));
+    const lines = [];
+    lines.push(`# Scanner export · sessao "${session}" · ${ts}`);
+    lines.push(`# Device: ${ua}`);
+    lines.push(`# App: ${APP_VERSION} · items=${items.length} linked=${linked.length} unlinked=${unlinked.length} dirty=${dirty.length}`);
+    lines.push('');
+    lines.push('## VINCULADOS (com SKU)');
+    lines.push('SKU;EAN;Nome;QtyLocal;SyncedQty;SyncStatus;OpId;SaldoOlist');
+    for (const it of linked) {
+      lines.push([
+        it.sku,
+        it.ean || '',
+        (it.name || '').replace(/;/g, ',').slice(0, 80),
+        Number(it.qty)||0,
+        Number(it.synced_qty)||0,
+        it.sync_status || 'idle',
+        it.op_id || '',
+        it.saldo_olist != null ? it.saldo_olist : '',
+      ].join(';'));
+    }
+    lines.push('');
+    lines.push('## NAO VINCULADOS (sem SKU - precisa cadastrar)');
+    lines.push('EAN;Nome;Qty;PrecoNormal;PrecoPromo');
+    for (const it of unlinked) {
+      lines.push([
+        it.ean || '',
+        (it.name || '').replace(/;/g, ',').slice(0, 80),
+        Number(it.qty)||0,
+        it.preco_normal || '',
+        it.preco_promo || '',
+      ].join(';'));
+    }
+    lines.push('');
+    lines.push('## JSON_RAW (pra Claudio processar)');
+    lines.push(JSON.stringify(items));
+    return lines.join('\n');
+  }
+
+  btnExportClaudio.addEventListener('click', () => {
+    if (items.length === 0) { toast('Nada pra exportar', 'warn'); return; }
+    const payload = buildExportPayload();
+    exportTextarea.value = payload;
+    exportModal.style.display = 'block';
+    setTimeout(() => { exportTextarea.focus(); exportTextarea.select(); }, 100);
+  });
+
+  exportCopy.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(exportTextarea.value);
+        toast('✓ Copiado! Cola no chat do Claudio', 'success');
+      } else {
+        exportTextarea.focus();
+        exportTextarea.select();
+        document.execCommand('copy');
+        toast('✓ Copiado (fallback). Cola no chat', 'success');
+      }
+    } catch (err) {
+      toast('⚠ Falha ao copiar · seleciona o texto manualmente', 'warn');
+    }
+  });
+
+  exportClose.addEventListener('click', () => { exportModal.style.display = 'none'; });
 
   btnClear.addEventListener('click', () => {
     if (items.length === 0) { toast('Lista já está vazia', 'warn'); return; }

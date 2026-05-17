@@ -960,7 +960,7 @@
     <img src="logo.png" alt="Vânia Importados">
     <div class="brand-text">
       <div class="brand-title">Scanner Vânia Importados</div>
-      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.5</div>
+      <div class="brand-sub" id="brand-sub">Importados &amp; Perfumaria · v25.6</div>
     </div>
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
@@ -1106,7 +1106,7 @@
   <button id="btn-clear" class="btn-danger">🗑 Limpar</button>
 </div>
 
-<!-- v25.5: modal de export pro Claudio -->
+<!-- v25.6: modal de export pro Claudio -->
 <div id="export-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;padding:20px;overflow:auto">
   <div style="max-width:600px;margin:40px auto;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;padding:18px;color:var(--text)">
     <h3 style="margin:0 0 10px;font-family:'Cormorant Garamond',serif;color:var(--gold)">📋 Exportar tudo pro Claudio</h3>
@@ -1137,12 +1137,12 @@
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
-  const SYNC_RETRY_MAX_MS = 600000;       // v25.5: backoff exponencial cap em 10 min
+  const SYNC_RETRY_MAX_MS = 600000;       // v25.6: backoff exponencial cap em 10 min
   const SEARCH_LIMIT = 6;
-  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.5: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v25.5';
+  const OFFLINE_FAIL_THRESHOLD = 3;       // v25.6: só marca OFFLINE após 3 falhas seguidas
+  const APP_VERSION = 'v25.6';
 
-  // v25.5: gera UUID curto pra idempotency key por bipe (persistido no item)
+  // v25.6: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
@@ -1174,7 +1174,7 @@
   let pendingSyncs = new Set();   // SKUs aguardando flush
   let syncTimer = null;            // debounce handle
   let syncInFlight = false;        // mutex pra evitar paralelismo
-  // v25.5: contador de falhas pra não marcar OFFLINE no primeiro tropeço
+  // v25.6: contador de falhas pra não marcar OFFLINE no primeiro tropeço
   let consecutiveFails = 0;
   let nextRetryAt = 0;              // timestamp ms — respeita Retry-After do Worker
   let lastErrorDetail = '';
@@ -1334,8 +1334,8 @@
     setTimeout(() => overlay.classList.remove('flash'), 400);
   }
 
-  // ---------- Worker sync (v16 → v25.5) ----------
-  // v25.5: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
+  // ---------- Worker sync (v16 → v25.6) ----------
+  // v25.6: estados "soft" e "hard". OFFLINE só após N falhas seguidas (anti-flicker).
   function setWorkerStatus(state, detail) {
     if (state === 'online' || state === 'syncing') {
       consecutiveFails = 0;
@@ -1393,7 +1393,7 @@
     syncStatusDetail.textContent = syncedItems > 0 ? `${syncedItems} item(s) no OLIST` : '';
   }
 
-  // v25.5: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
+  // v25.6: respeita 429 + Retry-After header. Atualiza nextRetryAt global pra
   // outras chamadas pularem até o tempo combinado (cooperative backoff).
   async function workerFetch(path, opts = {}) {
     // Se Worker pediu pra esperar e ainda não é hora, falha rápido sem bater na rede
@@ -1422,8 +1422,18 @@
       err.retry_after_s = ra;
       throw err;
     }
+    // 409 = Conflict (v25.6: duplicata detectada — EAN já vinculado OU nome similar).
+    // Mantém dados estruturados no error pro cliente decidir o que fazer.
+    if (res.status === 409) {
+      const err = new Error(data.error || data.message || 'conflict');
+      err.code = 'CONFLICT';
+      err.data = data;
+      throw err;
+    }
     if (!res.ok || data.ok === false) {
-      throw new Error(data.error || `HTTP ${res.status}`);
+      const err = new Error(data.error || `HTTP ${res.status}`);
+      err.data = data;
+      throw err;
     }
     return data;
   }
@@ -1476,7 +1486,7 @@
       }
       setWorkerStatus('online', `${produtos.length} produtos · ${data.cached ? 'cache' : 'live'}`);
       render();
-      // v25.5: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
+      // v25.6: NÃO buscar saldos em massa no boot. Cota Tiny é apertada, e auditar
       // 599 produtos no boot esgota e dispara punishment mode. Pre-seed agora é
       // lazy: só quando a Vânia bipar um item desconhecido OU apertar Atualizar.
       // Quem chamou fetchCatalogFromWorker com opts.withSaldos=true força o seed.
@@ -1514,7 +1524,7 @@
     syncTimer = setTimeout(flushSync, SYNC_DEBOUNCE_MS);
   }
 
-  // v25.5.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
+  // v25.6.1: flushSync com opId + pre-check inteligente + backoff exponencial + respeito a 429.
   // Pre-check (barato via cache 90s) reconcilia 3 cenários sem chamar /sync:
   //   a) OLIST == target  → marca synced (sync já passou, talvez resposta perdida)
   //   b) OLIST  > target  → alguém aplicou por fora (eu via API ou outro device).
@@ -1546,7 +1556,7 @@
         item.op_id = null;
         continue;
       }
-      // v25.5.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
+      // v25.6.1 PRE-CHECK: consulta saldo OLIST (cached 90s, barato).
       // Reconcilia se já tá certo OU se alguém aplicou por fora.
       try {
         const found = catalog.find(p => p.sku === sku);
@@ -1583,7 +1593,7 @@
           }
         }
       } catch (chkErr) { /* pre-check é best-effort, segue pro /sync */ }
-      // v25.5: garante opId estável pro retry replayar
+      // v25.6: garante opId estável pro retry replayar
       if (!item.op_id) item.op_id = genOpId();
       item.sync_status = 'syncing';
       saveItems();
@@ -1671,7 +1681,7 @@
     }
   }
 
-  // v25.5.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
+  // v25.6.1: AUDIT LAZY. Por default audita só items ATIVOS (qty>0 OU pending/error)
   // — tipicamente 5-30 SKUs em vez de 599. Cabe em 1 batch (40 max) e usa cache /saldos
   // sempre que possível. opts.fullScan=true volta ao comportamento antigo (catálogo todo)
   // — usado só em modo debug, evitar pq esgota cota Tiny.
@@ -1805,15 +1815,16 @@
 
     // FASE 1: cria todos no Tiny + WC draft (rápido, ~2s cada, sequencial pra evitar SKU collision)
     toast(`📝 Criando ${candidatos.length} rascunho(s) no Tiny + WC...`);
+    let dedupedToExisting = 0, similarConfirmed = 0;
     for (const item of candidatos) {
+      const payload = {
+        nome: item.name.trim(),
+        preco: Number(item.precoNormal),
+        ...(item.precoPromo != null && item.precoPromo !== '' ? { preco_promo: Number(item.precoPromo) } : {}),
+        ...(item.ean && !isSyntheticId(item.ean) ? { ean: item.ean } : {}),
+        quantidade: Number(item.qty) || 0,
+      };
       try {
-        const payload = {
-          nome: item.name.trim(),
-          preco: Number(item.precoNormal),
-          ...(item.precoPromo != null && item.precoPromo !== '' ? { preco_promo: Number(item.precoPromo) } : {}),
-          ...(item.ean && !isSyntheticId(item.ean) ? { ean: item.ean } : {}),
-          quantidade: Number(item.qty) || 0,
-        };
         const r = await workerFetch('/produto-novo', { method: 'POST', body: payload });
         item.sku = r.sku;
         item.wc_id = r.wc_id;
@@ -1827,6 +1838,57 @@
         saveItems();
         render();
       } catch (err) {
+        // v25.6: tratar 409 anti-duplicata do Worker
+        if (err.code === 'CONFLICT' && err.data) {
+          const d = err.data;
+          // Caso A: EAN já vinculado em outro SKU — usar o existente
+          if (d.error === 'ean_already_linked' && d.sku) {
+            item.sku = d.sku;
+            item.tiny_id = d.tiny_id;
+            if (item.synced_qty === undefined) item.synced_qty = 0;
+            item.sync_status = 'pending';
+            item.enrich_status = 'existing';  // não precisa enriquecer
+            pendingSyncs.add(d.sku);
+            saveItems();
+            render();
+            dedupedToExisting++;
+            toast(`✓ ${item.name}: já cadastrado como ${d.sku} · saldo vai pro existente`);
+            continue;
+          }
+          // Caso B: nome similar — perguntar se cadastra mesmo assim
+          if (d.error === 'similar_name_exists' && d.similar) {
+            const lista = d.similar.slice(0, 3).map(s => `• ${s.sku} ${s.nome}`).join('\n');
+            const ok = confirm(`⚠ Nome similar a produtos existentes:\n\n${lista}\n\nVocê quer cadastrar "${item.name}" MESMO ASSIM? (Cancela pra revisar)`);
+            if (!ok) {
+              item.sync_error = 'cancelado (duplicata)';
+              erros.push(`${item.name}: cancelado (similar a ${d.similar[0].sku})`);
+              createFail++;
+              continue;
+            }
+            // Reenvia com force=true
+            try {
+              const r2 = await workerFetch('/produto-novo', { method: 'POST', body: { ...payload, force: true } });
+              item.sku = r2.sku;
+              item.wc_id = r2.wc_id;
+              item.wc_draft_url = r2.wc_draft_url;
+              item.tiny_id = r2.tiny_id;
+              item.enrich_status = 'pending';
+              if (item.synced_qty === undefined) item.synced_qty = 0;
+              item.sync_status = 'pending';
+              pendingSyncs.add(r2.sku);
+              createdOk++;
+              similarConfirmed++;
+              saveItems();
+              render();
+              continue;
+            } catch (e2) {
+              item.sync_error = e2.message;
+              erros.push(`${item.name}: ${e2.message}`);
+              createFail++;
+              continue;
+            }
+          }
+        }
         console.warn('[cadastro]', item.name, err);
         item.sync_error = err.message;
         erros.push(`${item.name}: ${err.message}`);
@@ -1869,6 +1931,11 @@
             item.enrich_status = 'published';
             item.enrich_details = data.details;
             publishedOk++;
+          } else if (data.reason === 'kit_skip_auto') {
+            // v25.6: Kit detectado — fica draft sempre, Claudio enriquece manual com EAN especifico
+            item.enrich_status = 'kit_manual';
+            item.enrich_reason = 'Kit · Claudio enriquece manual';
+            draftPending++;
           } else {
             item.enrich_status = 'draft';
             item.enrich_reason = data.reason || data.error;
@@ -1896,6 +1963,8 @@
     const summary = [];
     if (publishedOk > 0) summary.push(`🎉 ${publishedOk} no ar`);
     if (draftPending > 0) summary.push(`📝 ${draftPending} draft (Claudio enrich)`);
+    if (dedupedToExisting > 0) summary.push(`♻ ${dedupedToExisting} já existia (vinculado)`);
+    if (similarConfirmed > 0) summary.push(`✓ ${similarConfirmed} forçado (similar)`);
     if (createFail > 0) summary.push(`⚠ ${createFail} falhou`);
     toast('✨ ' + summary.join(' · '));
   }
@@ -1922,7 +1991,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.5';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.6';
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2000,12 +2069,16 @@
         } else {
           syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
         }
-        // Badge de enrichment (v24)
+        // Badge de enrichment (v24, atualizado v25.6 com kit_manual + existing)
         if (it.enrich_status === 'enriching') {
           syncBadge += ` <span class="item-sync syncing">🤖 IA pesquisando...</span>`;
         } else if (it.enrich_status === 'published') {
           const conf = it.enrich_details?.confianca;
           syncBadge += ` <span class="item-sync synced">🎉 no site${conf ? ' ('+conf+')' : ''}</span>`;
+        } else if (it.enrich_status === 'kit_manual') {
+          syncBadge += ` <span class="item-sync pending" title="Kit detectado · Claudio enriquece manual com EAN do kit completo">📦 kit (Claudio)</span>`;
+        } else if (it.enrich_status === 'existing') {
+          syncBadge += ` <span class="item-sync synced" title="EAN já vinculado · vinculado ao produto existente">♻ já existia</span>`;
         } else if (it.enrich_status === 'draft') {
           const r = it.enrich_reason || 'aguardando';
           syncBadge += ` <span class="item-sync pending" title="${escapeHtml(r)}">📝 draft</span>`;
@@ -2049,7 +2122,7 @@
     lastScannedAt = now;
 
     const prod = eanIndex.get(ean);
-    // v25.5: procura por EAN OU por SKU. Cobre o cenário "cadastrei sem EAN
+    // v25.6: procura por EAN OU por SKU. Cobre o cenário "cadastrei sem EAN
     // antes (entry sintética 'sku:XXX') e agora bipo o EAN real" — sem essa
     // dedup, criava 2 entries pro mesmo SKU e gerava sync conflitante.
     let existing = items.find(i => i.ean === ean);
@@ -2108,7 +2181,7 @@
       // Produto NÃO cadastrado
       if (scanMode === 'estoque') {
         toast(`⚠ EAN não cadastrado · verificando catálogo...`, 'warn');
-        // v25.5: cenário "cadastrei há pouco mas catálogo local tava velho".
+        // v25.6: cenário "cadastrei há pouco mas catálogo local tava velho".
         // Tenta refresh em background. Se EAN aparecer após refresh, vincula auto.
         tryAutoLinkAfterCatalogRefresh(ean);
       } else {
@@ -2122,7 +2195,7 @@
     }, 10);
   }
 
-  // v25.5: vinculação automática quando EAN bipado não tava no catálogo local
+  // v25.6: vinculação automática quando EAN bipado não tava no catálogo local
   // mas pode estar no Worker (cadastro recente em outro device, por exemplo).
   async function tryAutoLinkAfterCatalogRefresh(ean) {
     try {
@@ -2803,7 +2876,7 @@
     }
   });
 
-  // v25.5: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
+  // v25.6: botão Atualizar = catálogo fresh + busca saldos OLIST explicitamente
   // (no boot automático isso é skipado pra não esgotar cota Tiny)
   btnRefreshCatalog.addEventListener('click', () => {
     nextRetryAt = 0; // limpa backoff em ação manual
@@ -3012,7 +3085,7 @@
     }
   });
 
-  // v25.5: export completo pra Claudio processar manualmente via API
+  // v25.6: export completo pra Claudio processar manualmente via API
   function buildExportPayload() {
     const session = sessionName || 'sem-nome';
     const ts = new Date().toLocaleString('pt-BR');
@@ -3115,7 +3188,7 @@
     if (it.sync_status === 'syncing') { it.sync_status = 'pending'; } // session morreu mid-sync
   }
 
-  // v25.5: dedupar entries com MESMO SKU (bug pre-v25.5 que criava 2 entries quando
+  // v25.6: dedupar entries com MESMO SKU (bug pre-v25.6 que criava 2 entries quando
   // o produto era cadastrado sem EAN real e depois bipava o EAN do frasco).
   // Estratégia: pra cada grupo de SKU duplicado, manter o item com EAN REAL (numérico),
   // somar qty + synced_qty dos outros, e descartar duplicatas sintéticas.
@@ -3151,7 +3224,7 @@
     }
   }
   if (dedupedCount > 0) {
-    console.log(`[migration v25.5] ${dedupedCount} entries duplicadas mergeadas`);
+    console.log(`[migration v25.6] ${dedupedCount} entries duplicadas mergeadas`);
     migrated++;
   }
 

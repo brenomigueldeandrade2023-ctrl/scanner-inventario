@@ -1134,13 +1134,17 @@
   const LS_CATALOG_META = 'inv_catalog_meta_v1';
   const LS_SESSION = 'inv_session_name_v1';
   const LS_HID_MODE = 'inv_hid_mode_v1';
+  const LS_DEVICE_ID = 'inv_device_id_v1';        // v27: identidade persistente do device
+  const LS_D1_SESSION = 'inv_d1_session_v1';      // v27: id da sessão D1 ativa
+  const LS_LAST_SCAN_ID = 'inv_last_scan_id_v1';  // v27: cursor de polling /scans
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
   const SYNC_RETRY_MAX_MS = 600000;       // v25.7: backoff exponencial cap em 10 min
+  const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v25.7';
+  const APP_VERSION = 'v27';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1157,6 +1161,15 @@
   let skuIndex = new Map();
   let catalogMeta = loadJSON(LS_CATALOG_META, null);
   let sessionName = localStorage.getItem(LS_SESSION) || '';
+  // v27: identidade persistente do device + cursor pra polling multi-device
+  let deviceId = localStorage.getItem(LS_DEVICE_ID);
+  if (!deviceId) {
+    deviceId = 'dev-' + (genOpId().slice(0, 8));
+    localStorage.setItem(LS_DEVICE_ID, deviceId);
+  }
+  let d1SessionId = Number(localStorage.getItem(LS_D1_SESSION)) || null;
+  let lastScanId = Number(localStorage.getItem(LS_LAST_SCAN_ID)) || 0;
+  let pollScansTimer = null;
   rebuildIndexes();
 
   let scanner = null;
@@ -1438,6 +1451,86 @@
     return data;
   }
 
+  // ===================================================================
+  // v27 — D1 session-aware scanning (multi-device + duplicate prompt)
+  // ===================================================================
+
+  // Pega/cria a sessão D1 ativa no Worker. Cacheia o id em localStorage.
+  // Se a sessão local não existe mais no servidor (fechada externamente),
+  // adopta a nova ativa. Idempotente, safe pra chamar em qualquer momento.
+  async function ensureD1Session() {
+    try {
+      const r = await workerFetch('/session?device_id=' + encodeURIComponent(deviceId));
+      const newId = r?.session?.id;
+      if (newId && newId !== d1SessionId) {
+        d1SessionId = newId;
+        localStorage.setItem(LS_D1_SESSION, String(d1SessionId));
+        // Trocou de sessão → reseta cursor de polling pra não pular eventos
+        lastScanId = 0;
+        localStorage.setItem(LS_LAST_SCAN_ID, '0');
+      }
+      return d1SessionId;
+    } catch (e) {
+      console.warn('[d1-session]', e);
+      return d1SessionId;
+    }
+  }
+
+  // Consulta histórico do SKU na sessão ATUAL. Retorna {count, qty_total}.
+  // Frontend usa antes de incrementar pra mostrar prompt "já bipado, +1?".
+  async function getScanHistory(sku) {
+    if (!d1SessionId) await ensureD1Session();
+    try {
+      const q = `?sku=${encodeURIComponent(sku)}${d1SessionId ? '&session_id=' + d1SessionId : ''}`;
+      const r = await workerFetch('/scan-history' + q);
+      return { count: r.count || 0, qty_total: r.qty_total || 0, scans: r.scans || [] };
+    } catch (e) {
+      console.warn('[scan-history]', sku, e);
+      return { count: 0, qty_total: 0, scans: [] };
+    }
+  }
+
+  // Polling: busca scans novos da sessão atual (de QUALQUER device).
+  // Pra cada scan novo que não veio deste device, reflete na lista local.
+  async function pollNewScans() {
+    if (!d1SessionId) return;
+    try {
+      const r = await workerFetch(`/scans?session_id=${d1SessionId}&since_id=${lastScanId}`);
+      const scans = r.scans || [];
+      if (scans.length === 0) return;
+      let touched = 0;
+      for (const s of scans) {
+        if (s.id > lastScanId) lastScanId = s.id;
+        // Pula scans deste próprio device (já refletidos localmente)
+        if (s.device_id === deviceId) continue;
+        // Reflete o saldo no item local (autoridade = tiny_saldo se OK)
+        const item = items.find(i => i.sku === s.sku);
+        if (item && s.tiny_saldo !== null && s.tiny_saldo !== undefined) {
+          item.qty = Number(s.tiny_saldo);
+          item.synced_qty = Number(s.tiny_saldo);
+          item.saldo_olist = Number(s.tiny_saldo);
+          item.sync_status = 'synced';
+          touched++;
+        }
+      }
+      if (touched > 0) {
+        saveItems();
+        localStorage.setItem(LS_LAST_SCAN_ID, String(lastScanId));
+        render();
+        toast(`↻ ${touched} bipe(s) de outro aparelho`, 'info');
+      } else {
+        localStorage.setItem(LS_LAST_SCAN_ID, String(lastScanId));
+      }
+    } catch (e) {
+      // silencioso — polling não deve poluir UI
+    }
+  }
+
+  function startPollingScans() {
+    if (pollScansTimer) clearInterval(pollScansTimer);
+    pollScansTimer = setInterval(pollNewScans, POLL_SCANS_MS);
+  }
+
   async function fetchCatalogFromWorker(opts = {}) {
     const fresh = opts.fresh ? '?fresh=1' : '';
     setWorkerStatus('syncing', 'Carregando catálogo do OLIST...');
@@ -1607,7 +1700,18 @@
       render();
       try {
         const note = sessionName ? `[${sessionName}] Scanner ${delta > 0 ? 'entrada' : 'saída'} ${Math.abs(delta)} un` : undefined;
-        const result = await workerFetch('/sync', { method: 'POST', body: { sku, delta, note, opId: item.op_id } });
+        // v27: /scan grava em D1 + chama Tiny (em vez de /sync direto).
+        // Multi-device fica audited e o polling em outros aparelhos vê.
+        if (!d1SessionId) await ensureD1Session();
+        const result = await workerFetch('/scan', { method: 'POST', body: {
+          sku,
+          qty: Math.abs(delta),
+          tipo: delta > 0 ? 'E' : 'S',
+          device_id: deviceId,
+          session_id: d1SessionId,
+          op_id: item.op_id,
+          note,
+        }});
         // synced_qty = saldo OLIST atual (não local qty) — lida com multi-device
         item.synced_qty = Number(result.saldo);
         item.sync_status = 'synced';
@@ -1997,7 +2101,7 @@
     stats.innerHTML = `<strong>${totalItems}</strong> ${totalItems === 1 ? 'item' : 'itens'} · <strong>${totalUnits}</strong> un`;
 
     // Brand sub: show session name if set
-    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : 'Importados & Perfumaria · v25.7';
+    brandSub.textContent = sessionName ? `Sessão: ${sessionName}` : `Importados & Perfumaria · ${APP_VERSION}`;
 
     catalogCount.textContent = catalog.length.toLocaleString('pt-BR');
     const newlyLinked = countNewlyLinked();
@@ -2116,7 +2220,7 @@
   }
 
   // ---------- Scan handling ----------
-  function onScan(ean) {
+  async function onScan(ean) {
     ean = String(ean).trim();
     if (!ean || !/^\d{6,14}$/.test(ean)) {
       toast('EAN inválido', 'error');
@@ -2137,6 +2241,30 @@
       if (existing && existing.ean !== ean) {
         // Substitui EAN sintético/antigo pelo real bipado agora
         existing.ean = ean;
+      }
+    }
+
+    // v27: DUPLICATE DETECTION — checa se SKU já foi bipado nesta sessão D1
+    // (cobre tanto este device quanto outros). Mostra prompt antes de incrementar.
+    const sku = (prod && prod.sku) || (existing && existing.sku);
+    if (sku) {
+      const localQty = existing ? (Number(existing.qty) || 0) : 0;
+      let d1QtyTotal = 0;
+      try {
+        const hist = await getScanHistory(sku);
+        d1QtyTotal = Number(hist.qty_total) || 0;
+      } catch (e) { /* offline tolera */ }
+      // Total considerado já bipado: max(localStorage, D1) pra cobrir desync
+      const totalPrior = Math.max(localQty, d1QtyTotal);
+      if (totalPrior > 0) {
+        const otherDevice = Math.max(0, d1QtyTotal - localQty);
+        const name = (prod && prod.name) || (existing && existing.name) || sku;
+        const extra = otherDevice > 0 ? ` (${otherDevice} em outro aparelho)` : '';
+        const msg = `"${name}" já foi bipado ${totalPrior}x nesta sessão${extra}. Bipar mais 1?`;
+        if (!confirm(msg)) {
+          toast('Bipe cancelado', 'info');
+          return;
+        }
       }
     }
 
@@ -3254,6 +3382,16 @@
         toast(`⏳ Retomando sync de ${pendingSyncs.size} item(s)`);
         syncTimer = setTimeout(flushSync, 400);
       }
+    }
+  });
+
+  // v27: D1 session (multi-device shared state). Pega/cria sessão ativa,
+  // hidrata mudanças de outros aparelhos, e inicia polling pra real-time.
+  ensureD1Session().then(sid => {
+    if (sid) {
+      console.log(`[d1] sessão ativa ${sid} · device ${deviceId}`);
+      pollNewScans();         // hidrata uma vez agora
+      startPollingScans();     // polling a cada 5s
     }
   });
 

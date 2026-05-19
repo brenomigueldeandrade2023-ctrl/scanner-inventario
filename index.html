@@ -1144,7 +1144,7 @@
   const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27.1';
+  const APP_VERSION = 'v27.2';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1715,22 +1715,39 @@
           op_id: item.op_id,
           note,
         }});
-        // synced_qty = saldo OLIST atual (não local qty) — lida com multi-device
-        item.synced_qty = Number(result.saldo);
-        item.sync_status = 'synced';
+        // v27.2 CRITICAL FIX: alinha qty local com Tiny saldo APOS scan.
+        // Bug antigo: se Tiny ja tinha saldo (ex: 4 de ontem) e bipa +1 hoje,
+        // /scan corretamente fazia Tiny=5, mas qty_local ficava em 1. A check
+        // 'currentQty !== saldo' interpretava como "user descontou" e disparava
+        // /scan tipo=S de -4, ZERANDO o saldo verdadeiro do Tiny. Brutal.
+        //
+        // Fix: qty = Tiny novo saldo + bipes que entraram DURANTE o /scan
+        // (inflight bipes preservados, sem perder e sem duplicar).
+        const newSaldo = Number(result.saldo);
+        const currentQty = Number(item.qty) || 0;
+        const inflight = Math.max(0, currentQty - targetQty); // bipes entre flushStart e agora
+        item.synced_qty = newSaldo;
+        item.saldo_olist = newSaldo;
+        item.qty = newSaldo + inflight;
         item.sync_error = null;
         item.sync_attempts = 0;
-        item.saldo_olist = Number(result.saldo);
-        item.op_id = null; // consumido
-        // Se qty divergiu do que mandamos (rebipe durante sync), mantém pending com novo opId
-        const currentQty = Number(item.qty) || 0;
-        if (currentQty !== Number(result.saldo)) {
+        item.op_id = null;
+        if (inflight > 0) {
+          // Tem bipes novos que entraram durante o /scan — reagenda sync
           item.sync_status = 'pending';
           item.op_id = genOpId();
           pendingSyncs.add(sku);
+        } else {
+          item.sync_status = 'synced';
+        }
+        // Toast claro mostrando o que aconteceu (especialmente quando Tiny ja tinha saldo)
+        const tinyHadBefore = newSaldo - delta; // saldo Tiny ANTES do nosso scan
+        if (tinyHadBefore !== syncedQty) {
+          // Tiny tinha saldo diferente do que sabiamos (bipes antigos pre-limpar OU outro device)
+          toast(`✓ ${sku}: +${delta} | Tiny ${tinyHadBefore} → ${newSaldo}`, 'info');
         }
         const tag = result.idempotent_replay ? ' (replay)' : '';
-        setWorkerStatus('online', `${delta > 0 ? '+' : ''}${delta} ${sku} · saldo ${result.saldo}${tag}`);
+        setWorkerStatus('online', `${delta > 0 ? '+' : ''}${delta} ${sku} · saldo ${newSaldo}${tag}`);
       } catch (err) {
         console.warn('[sync]', sku, err);
         item.sync_status = 'pending'; // mantém pending pra retry com mesmo opId

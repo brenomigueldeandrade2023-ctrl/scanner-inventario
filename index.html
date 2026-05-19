@@ -1081,6 +1081,9 @@
       </div>
       <button id="btn-refresh-catalog" class="btn-secondary">🔄 Atualizar</button>
     </div>
+    <button id="btn-sync-olist-full" class="btn-secondary btn-block" style="margin-top: 6px;">
+      📥 Sincronizar TUDO com OLIST (fresh)
+    </button>
     <button id="btn-export-unlinked" class="btn-secondary btn-block" style="display: none; margin-top: 10px;">
       📋 Não vinculados
     </button>
@@ -1149,7 +1152,7 @@
   const ITEMS_PER_PAGE = 20;              // v27.5: paginação lista itens escaneados
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27.6';
+  const APP_VERSION = 'v27.7';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1699,11 +1702,32 @@
         // Sleep pra não sufocar Tiny rate-limit
         await new Promise(res => setTimeout(res, 1200));
       }
+      // v27.7: depois de carregar TUDO do OLIST, remove items locais que
+      // já não estão refletindo nada (qty=0 + synced=0 + sem bipe pendente)
+      // OU items vinculados a SKU que não tem mais saldo no Tiny e foram
+      // marcados como from_olist (vieram do snapshot anterior, agora zeraram).
+      const lenBefore = items.length;
+      const skusComSaldoOlist = new Set();
+      for (const it of items) {
+        if ((Number(it.saldo_olist) || 0) > 0) skusComSaldoOlist.add(it.sku);
+      }
+      items = items.filter(it => {
+        const q = Number(it.qty) || 0;
+        const sq = Number(it.synced_qty) || 0;
+        const so = Number(it.saldo_olist) || 0;
+        // Remove se: tudo zero E não tem bipe pendente E é from_olist (snapshot antigo)
+        if (q === 0 && sq === 0 && so === 0 && it.from_olist) return false;
+        return true;
+      });
+      const removed = lenBefore - items.length;
       saveItems();
       render();
-      setWorkerStatus('online', `OLIST carregado · ${created} novos, ${updated} atualizados`);
-      if (created > 0) toast(`📦 OLIST: ${created} produtos com saldo carregados`, 'info');
-      return { created, updated };
+      const msg = `OLIST carregado · ${created} novos, ${updated} atualizados${removed > 0 ? `, ${removed} obsoletos removidos` : ''}`;
+      setWorkerStatus('online', msg);
+      if (created > 0 || removed > 0) {
+        toast(`📦 ${msg}`, 'info');
+      }
+      return { created, updated, removed };
     } catch (err) {
       console.warn('[loadAllStock]', err);
       setWorkerStatus('online', 'OLIST load falhou — tente Atualizar');
@@ -3282,6 +3306,16 @@
   });
   $('btn-export-unlinked').addEventListener('click', exportUnlinked);
   $('btn-export-cadastros').addEventListener('click', cadastrarNovosNoSite);
+
+  // v27.7: botão Sincronizar TUDO — força fresh do catálogo + saldos OLIST
+  $('btn-sync-olist-full').addEventListener('click', async () => {
+    if (!confirm('Sincronizar todos os ~780 produtos com OLIST?\n\nVai demorar 2-4 minutos. O app continua usável durante.')) return;
+    nextRetryAt = 0;
+    consecutiveFails = 0;
+    await fetchCatalogFromWorker({ fresh: true });
+    await loadAllStockFromOlist(true);
+    toast('✅ App sincronizado com OLIST', 'success');
+  });
 
   listSearchEl.addEventListener('input', () => {
     listFilter = listSearchEl.value;

@@ -1144,7 +1144,7 @@
   const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27';
+  const APP_VERSION = 'v27.1';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1671,12 +1671,13 @@
               saveItems();
               continue;
             }
-            if (olistSaldo > targetQty && syncedQty < olistSaldo) {
-              // Cenário (b): alguém aplicou por fora ENTRE o último sync e agora
+            if (olistSaldo > targetQty && syncedQty > 0 && syncedQty < olistSaldo) {
+              // Cenário (b): alguém aplicou por fora ENTRE meu último sync e agora
               // (eu via API, outro device, etc). Adota OLIST como autoridade.
-              // Distinção crítica v25.7: só dispara quando syncedQty < OLIST (item stale).
-              // Se syncedQty === OLIST e target < OLIST, é DECREMENTO LEGÍTIMO do cliente
-              // (botão -, edit, remove) → cai pra /sync normal abaixo.
+              // v27 FIX (2026-05-18): requer syncedQty > 0. Se syncedQty=0, item
+              // é FRESCO (criado nesta sessão após 'limpar lista') — o bipe atual
+              // deve SOMAR ao Tiny, não SOBRESCREVER pelo saldo prévio. Bug antigo
+              // perdia bipes pós-limpar quando Tiny já tinha saldo de bipes antigos.
               item.qty = olistSaldo;
               item.synced_qty = olistSaldo;
               item.sync_status = 'synced';
@@ -1685,10 +1686,12 @@
               item.saldo_olist = olistSaldo;
               item.op_id = null;
               setWorkerStatus('online', `↺ ${sku} reconciliado (OLIST=${olistSaldo} > local ${targetQty})`);
+              toast(`↺ ${sku} adotou OLIST=${olistSaldo} (outro device bipou ${olistSaldo - targetQty}x)`, 'info');
               saveItems();
               continue;
             }
-            // Cenário (c): segue pra /sync (entrada real)
+            // Cenário (c): segue pra /scan (entrada real)
+            // Cobre: item fresco (syncedQty=0) pós-limpar → soma ao Tiny existente.
           }
         }
       } catch (chkErr) { /* pre-check é best-effort, segue pro /sync */ }

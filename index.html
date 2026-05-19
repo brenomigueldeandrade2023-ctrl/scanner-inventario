@@ -1137,6 +1137,7 @@
   const LS_DEVICE_ID = 'inv_device_id_v1';        // v27: identidade persistente do device
   const LS_D1_SESSION = 'inv_d1_session_v1';      // v27: id da sessão D1 ativa
   const LS_LAST_SCAN_ID = 'inv_last_scan_id_v1';  // v27: cursor de polling /scans
+  const LS_EAN_ALIASES = 'inv_ean_aliases_v1';    // v27.3: ean->sku permanente (sobrevive a mudancas de GTIN no Tiny)
   const SCAN_DEBOUNCE_MS = 1500;
   const SYNC_DEBOUNCE_MS = 1200;
   const SYNC_RETRY_BASE_MS = 8000;
@@ -1144,7 +1145,7 @@
   const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27.2';
+  const APP_VERSION = 'v27.3';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1170,6 +1171,16 @@
   let d1SessionId = Number(localStorage.getItem(LS_D1_SESSION)) || null;
   let lastScanId = Number(localStorage.getItem(LS_LAST_SCAN_ID)) || 0;
   let pollScansTimer = null;
+  // v27.3: EAN aliases persistentes - sobrevive a mudancas de GTIN no Tiny
+  // Toda vez que app vincula ean->sku (bipe encontra prod, ou /vincular), salva.
+  // No bipe: se ean nao tá no eanIndex mas tá em aliases, usa o alias.
+  let eanAliases = loadJSON(LS_EAN_ALIASES, {});
+  function saveEanAlias(ean, sku) {
+    if (!ean || !sku) return;
+    if (eanAliases[ean] === sku) return;
+    eanAliases[ean] = sku;
+    try { localStorage.setItem(LS_EAN_ALIASES, JSON.stringify(eanAliases)); } catch {}
+  }
   rebuildIndexes();
 
   let scanner = null;
@@ -2251,7 +2262,13 @@
     lastScannedEan = ean;
     lastScannedAt = now;
 
-    const prod = eanIndex.get(ean);
+    let prod = eanIndex.get(ean);
+    // v27.3: se eanIndex nao tem, tenta EAN alias persistente (de bipes anteriores)
+    // Cobre cenario: Tiny tinha GTIN X, alguem mudou pra Y, mas usuario tem fisico ainda
+    // com codigo X. Sem isso, "EAN nao cadastrado" todo dia pro mesmo produto.
+    if (!prod && eanAliases[ean]) {
+      prod = catalog.find(p => p.sku === eanAliases[ean]);
+    }
     // v25.7: procura por EAN OU por SKU. Cobre o cenário "cadastrei sem EAN
     // antes (entry sintética 'sku:XXX') e agora bipo o EAN real" — sem essa
     // dedup, criava 2 entries pro mesmo SKU e gerava sync conflitante.
@@ -2302,8 +2319,17 @@
         if (!existing.name) existing.name = prod.name;
       }
     } else {
-      // Se o produto já tem saldo no OLIST, adota como ponto de partida (v21)
-      const startSaldo = (prod && Number(prod.olist_saldo) > 0) ? Number(prod.olist_saldo) : 0;
+      // v27.3: busca saldo Tiny IMEDIATO pra item fresco — evita janela onde qty=1
+      // aparece localmente enquanto Tiny ja tem N. Sem isso o usuario via "1"
+      // por 1.2s antes do flushSync alinhar pra N+1, parecendo que perdeu o saldo.
+      let startSaldo = 0;
+      if (prod && prod.id) {
+        try {
+          const chk = await workerFetch('/saldos', { method: 'POST', body: { ids: [String(prod.id)] }});
+          const s = chk?.saldos?.[prod.sku];
+          if (typeof s === 'number' && s > 0) startSaldo = s;
+        } catch { /* offline ok, qty inicia em 1 */ }
+      }
       items.push({
         ean,
         sku: prod ? prod.sku : '',
@@ -2315,6 +2341,8 @@
       });
     }
     saveItems();
+    // v27.3: registra alias ean->sku permanente assim que vincula
+    if (prod && prod.sku) saveEanAlias(ean, prod.sku);
     if (prod) queueSync(prod.sku);
 
     feedback(!prod);
@@ -2494,6 +2522,7 @@
     p.ean = ean;
     eanIndex.set(ean, p);
     saveCatalog();
+    saveEanAlias(ean, sku); // v27.3: alias persistente
     const item = items.find(i => i.ean === ean);
     if (item) {
       item.sku = p.sku;

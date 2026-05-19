@@ -1145,7 +1145,7 @@
   const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27.3';
+  const APP_VERSION = 'v27.4';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -2190,23 +2190,23 @@
         const linkBadge = (!it.sku && catalog.length > 0)
           ? `<span class="badge-unlinked" data-act="link">vincular</span>` : '';
         let syncBadge = '';
+        // v27.4: SEMPRE mostra OLIST atual quando tem SKU, com botão refresh manual.
+        // Badge: APP=N | OLIST=M (✓ se bate, ⚠ se difere) + 🔄 pra forçar refresh
         if (it.sku) {
           const tgt = Number(it.qty) || 0;
           const synced = Number(it.synced_qty) || 0;
-          // saldo_olist é o total no OLIST após o último sync (inclui o que outros dispositivos contaram)
           const olistTotal = (it.saldo_olist != null) ? Number(it.saldo_olist) : synced;
-          const otherDevices = olistTotal - synced;
           if (it.sync_status === 'error') {
-            syncBadge = `<span class="item-sync error" title="${escapeHtml(it.sync_error || 'erro')}">⚠ erro</span>`;
+            syncBadge = `<span class="item-sync error" title="${escapeHtml(it.sync_error || 'erro')}">⚠ erro</span> `;
           } else if (it.sync_status === 'syncing') {
-            syncBadge = `<span class="item-sync syncing">⏳ enviando</span>`;
+            syncBadge = `<span class="item-sync syncing">⏳ enviando</span> `;
           } else if (tgt !== synced) {
-            syncBadge = `<span class="item-sync pending">⏳ pendente</span>`;
-          } else if (synced > 0 || olistTotal > 0) {
-            const myPart = synced > 0 ? `${synced}` : '0';
-            const totalPart = otherDevices > 0 ? ` / OLIST ${olistTotal}` : '';
-            syncBadge = `<span class="item-sync synced" title="${escapeHtml(myPart + ' contados aqui · ' + olistTotal + ' total no OLIST')}">✓ ${myPart}${totalPart}</span>`;
+            syncBadge = `<span class="item-sync pending">⏳ pendente</span> `;
           }
+          const matchIcon = tgt === olistTotal ? '✓' : '⚠';
+          const matchClass = tgt === olistTotal ? 'synced' : 'pending';
+          syncBadge += `<span class="item-sync ${matchClass}" title="App=${tgt} · OLIST=${olistTotal}">APP ${tgt} ${matchIcon} OLIST ${olistTotal}</span> `;
+          syncBadge += `<span class="item-sync nolink" data-act="refresh-saldo" data-sku="${escapeHtml(it.sku)}" style="cursor:pointer" title="Atualizar saldo OLIST agora">🔄</span>`;
         } else {
           syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
         }
@@ -2251,16 +2251,31 @@
   }
 
   // ---------- Scan handling ----------
+  // v27.4: lock global pra impedir bipes empilhados durante confirm()/await.
+  // Pistol scanner pode disparar 5-10 bipes em sequencia enquanto user le
+  // o prompt. Sem o lock, cada um disparava NOVO confirm em loop infinito.
+  let scanInProgress = false;
   async function onScan(ean) {
     ean = String(ean).trim();
     if (!ean || !/^\d{6,14}$/.test(ean)) {
       toast('EAN inválido', 'error');
       return;
     }
+    if (scanInProgress) return; // v27.4 ignora bipe enquanto outro tá rolando
     const now = Date.now();
     if (ean === lastScannedEan && (now - lastScannedAt) < SCAN_DEBOUNCE_MS) return;
-    lastScannedEan = ean;
-    lastScannedAt = now;
+    scanInProgress = true;
+    try {
+      await _doScan(ean);
+    } finally {
+      // Atualiza debounce timestamp DEPOIS de processar (cobre tempo de confirm/await)
+      lastScannedEan = ean;
+      lastScannedAt = Date.now();
+      scanInProgress = false;
+    }
+  }
+
+  async function _doScan(ean) {
 
     let prod = eanIndex.get(ean);
     // v27.3: se eanIndex nao tem, tenta EAN alias persistente (de bipes anteriores)
@@ -3074,13 +3089,40 @@
     render();
   });
 
-  itemList.addEventListener('click', (e) => {
+  itemList.addEventListener('click', async (e) => {
     const linkBadge = e.target.closest('[data-act="link"]');
     if (linkBadge) {
       const row = linkBadge.closest('.list-item');
       const idx = Number(row.dataset.idx);
       showLastScan(items[idx].ean, true);
       window.scrollTo({ top: lastScanBox.offsetTop - 60, behavior: 'smooth' });
+      return;
+    }
+    // v27.4: botao 🔄 atualiza saldo OLIST do item agora (sem cache)
+    const refreshBtn = e.target.closest('[data-act="refresh-saldo"]');
+    if (refreshBtn) {
+      const sku = refreshBtn.dataset.sku;
+      const prod = catalog.find(p => p.sku === sku);
+      if (!prod || !prod.id) { toast('Sem ID Tiny', 'warn'); return; }
+      refreshBtn.textContent = '⏳';
+      try {
+        const r = await workerFetch('/saldos', { method: 'POST', body: { ids: [String(prod.id)], fresh: true }});
+        const newSaldo = r?.saldos?.[sku];
+        if (typeof newSaldo === 'number') {
+          const it = items.find(i => i.sku === sku);
+          if (it) {
+            it.saldo_olist = newSaldo;
+            if (Number(it.qty) === Number(it.synced_qty)) {
+              // estava alinhado, atualiza tambem o synced pra refletir
+              it.synced_qty = newSaldo;
+              it.qty = newSaldo;
+            }
+            saveItems();
+          }
+          toast(`OLIST ${sku} = ${newSaldo}`, 'info');
+          render();
+        }
+      } catch (err) { toast('Falha: ' + err.message, 'error'); }
       return;
     }
     const btn = e.target.closest('button');
@@ -3443,6 +3485,40 @@
       startPollingScans();     // polling a cada 5s
     }
   });
+
+  // v27.4: auto-refresh saldos OLIST dos items vinculados a cada 15s.
+  // Mantém badge "APP X ✓/⚠ OLIST Y" sempre atualizada sem usuario clicar.
+  // Bate em /saldos batch (max 8 por chunk) — Tiny suporta.
+  async function autoPollSaldos() {
+    const skusComId = items
+      .filter(i => i.sku)
+      .map(i => {
+        const p = catalog.find(c => c.sku === i.sku);
+        return p && p.id ? { sku: i.sku, id: String(p.id) } : null;
+      })
+      .filter(x => x);
+    if (skusComId.length === 0) return;
+    // Limita a 24 IDs por ciclo (3 batches Worker de 8) pra nao estourar Tiny
+    const chunk = skusComId.slice(0, 24);
+    try {
+      const r = await workerFetch('/saldos', { method: 'POST', body: { ids: chunk.map(x => x.id) }});
+      if (r?.saldos) {
+        let changed = 0;
+        for (const c of chunk) {
+          const ns = r.saldos[c.sku];
+          if (typeof ns !== 'number') continue;
+          const it = items.find(i => i.sku === c.sku);
+          if (!it) continue;
+          if (Number(it.saldo_olist) !== ns) {
+            it.saldo_olist = ns;
+            changed++;
+          }
+        }
+        if (changed > 0) { saveItems(); render(); }
+      }
+    } catch { /* silent */ }
+  }
+  setInterval(autoPollSaldos, 15000);
 
   // Health-ping periódico pra refletir status de conexão (a cada 60s)
   setInterval(async () => {

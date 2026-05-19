@@ -1143,9 +1143,10 @@
   const SYNC_RETRY_BASE_MS = 8000;
   const SYNC_RETRY_MAX_MS = 600000;       // v25.7: backoff exponencial cap em 10 min
   const POLL_SCANS_MS = 5000;             // v27: polling multi-device a cada 5s
+  const ITEMS_PER_PAGE = 20;              // v27.5: paginação lista itens escaneados
   const SEARCH_LIMIT = 6;
   const OFFLINE_FAIL_THRESHOLD = 3;       // v25.7: só marca OFFLINE após 3 falhas seguidas
-  const APP_VERSION = 'v27.4';
+  const APP_VERSION = 'v27.5';
 
   // v25.7: gera UUID curto pra idempotency key por bipe (persistido no item)
   function genOpId() {
@@ -1171,6 +1172,7 @@
   let d1SessionId = Number(localStorage.getItem(LS_D1_SESSION)) || null;
   let lastScanId = Number(localStorage.getItem(LS_LAST_SCAN_ID)) || 0;
   let pollScansTimer = null;
+  let currentPage = 1; // v27.5: pagina ativa da lista de itens
   // v27.3: EAN aliases persistentes - sobrevive a mudancas de GTIN no Tiny
   // Toda vez que app vincula ean->sku (bipe encontra prod, ou /vincular), salva.
   // No bipe: se ean nao tá no eanIndex mas tá em aliases, usa o alias.
@@ -1502,38 +1504,121 @@
   }
 
   // Polling: busca scans novos da sessão atual (de QUALQUER device).
-  // Pra cada scan novo que não veio deste device, reflete na lista local.
+  // v27.5: agora também CRIA items locais quando outro device bipa SKU
+  // que este device nunca viu — assim a lista mostra TUDO que foi bipado.
   async function pollNewScans() {
     if (!d1SessionId) return;
     try {
       const r = await workerFetch(`/scans?session_id=${d1SessionId}&since_id=${lastScanId}`);
       const scans = r.scans || [];
       if (scans.length === 0) return;
-      let touched = 0;
+      let touched = 0, created = 0;
       for (const s of scans) {
         if (s.id > lastScanId) lastScanId = s.id;
         // Pula scans deste próprio device (já refletidos localmente)
         if (s.device_id === deviceId) continue;
-        // Reflete o saldo no item local (autoridade = tiny_saldo se OK)
-        const item = items.find(i => i.sku === s.sku);
-        if (item && s.tiny_saldo !== null && s.tiny_saldo !== undefined) {
+        if (s.tiny_status !== 'ok' || s.tiny_saldo === null || s.tiny_saldo === undefined) continue;
+
+        let item = items.find(i => i.sku === s.sku);
+        if (item) {
+          // SKU já existe local — atualiza saldo do outro device
           item.qty = Number(s.tiny_saldo);
           item.synced_qty = Number(s.tiny_saldo);
           item.saldo_olist = Number(s.tiny_saldo);
           item.sync_status = 'synced';
           touched++;
+        } else {
+          // SKU NOVO bipado em outro device — cria item local pra aparecer na lista
+          const prod = catalog.find(p => p.sku === s.sku);
+          if (!prod) continue; // sem catálogo, ignora
+          items.push({
+            ean: prod.ean || `sku:${s.sku}`,
+            sku: s.sku,
+            name: prod.name || s.sku,
+            qty: Number(s.tiny_saldo),
+            synced_qty: Number(s.tiny_saldo),
+            saldo_olist: Number(s.tiny_saldo),
+            sync_status: 'synced',
+            from_other_device: true,
+          });
+          created++;
         }
       }
-      if (touched > 0) {
+      if (touched + created > 0) {
         saveItems();
         localStorage.setItem(LS_LAST_SCAN_ID, String(lastScanId));
         render();
-        toast(`↻ ${touched} bipe(s) de outro aparelho`, 'info');
+        const msg = created > 0
+          ? `↻ ${created} novo(s) + ${touched} atualizado(s) de outro aparelho`
+          : `↻ ${touched} bipe(s) de outro aparelho`;
+        toast(msg, 'info');
       } else {
         localStorage.setItem(LS_LAST_SCAN_ID, String(lastScanId));
       }
     } catch (e) {
       // silencioso — polling não deve poluir UI
+    }
+  }
+
+  // v27.5: hidratação inicial — ao abrir app, busca TODOS scans da sessão D1
+  // e popula items com saldo atual de cada SKU. Garante que outro aparelho
+  // vê tudo que já foi bipado mesmo se ele abrir o app depois.
+  async function hydrateFromD1() {
+    if (!d1SessionId) return;
+    try {
+      const r = await workerFetch(`/scans?session_id=${d1SessionId}&since_id=0`);
+      const scans = r.scans || [];
+      if (scans.length === 0) return;
+      // Pega último scan por SKU pra ter saldo atual no Tiny
+      const lastBySku = new Map();
+      for (const s of scans) {
+        if (s.tiny_status !== 'ok' || s.tiny_saldo === null || s.tiny_saldo === undefined) continue;
+        const prev = lastBySku.get(s.sku);
+        if (!prev || s.id > prev.id) lastBySku.set(s.sku, s);
+      }
+      let created = 0, updated = 0;
+      for (const [sku, s] of lastBySku.entries()) {
+        let item = items.find(i => i.sku === sku);
+        if (!item) {
+          const prod = catalog.find(p => p.sku === sku);
+          if (!prod) continue;
+          items.push({
+            ean: prod.ean || `sku:${sku}`,
+            sku: sku,
+            name: prod.name || sku,
+            qty: Number(s.tiny_saldo),
+            synced_qty: Number(s.tiny_saldo),
+            saldo_olist: Number(s.tiny_saldo),
+            sync_status: 'synced',
+            from_other_device: s.device_id !== deviceId,
+          });
+          created++;
+        } else {
+          // Atualiza saldo OLIST e — se item estava synced — adopt novo saldo
+          item.saldo_olist = Number(s.tiny_saldo);
+          const tg = Number(item.qty) || 0;
+          const sy = Number(item.synced_qty) || 0;
+          if (tg === sy) {
+            item.qty = Number(s.tiny_saldo);
+            item.synced_qty = Number(s.tiny_saldo);
+          }
+          updated++;
+        }
+      }
+      // Atualiza lastScanId pro maior visto
+      const maxId = scans.length > 0 ? Math.max(...scans.map(x => x.id)) : 0;
+      if (maxId > lastScanId) {
+        lastScanId = maxId;
+        localStorage.setItem(LS_LAST_SCAN_ID, String(lastScanId));
+      }
+      if (created + updated > 0) {
+        saveItems();
+        render();
+        if (created > 0) toast(`📥 ${created} produto(s) do histórico carregado(s)`, 'info');
+        console.log(`[hydrate] criados=${created} atualizados=${updated}`);
+      }
+    } catch (e) {
+      console.warn('[hydrate]', e);
     }
   }
 
@@ -2180,8 +2265,14 @@
       itemList.innerHTML = `<div class="empty-state">Nenhum item bate com "${escapeHtml(listFilter)}"</div>`;
     } else {
       itemList.innerHTML = '';
-      // Render filtered, newest first
-      const indexed = filtered.map(it => ({ it, idx: items.indexOf(it) })).reverse();
+      // v27.5: Paginação 20 por página + lista newest first
+      const indexedAll = filtered.map(it => ({ it, idx: items.indexOf(it) })).reverse();
+      const totalPages = Math.max(1, Math.ceil(indexedAll.length / ITEMS_PER_PAGE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+      const pageStart = (currentPage - 1) * ITEMS_PER_PAGE;
+      const pageEnd = pageStart + ITEMS_PER_PAGE;
+      const indexed = indexedAll.slice(pageStart, pageEnd);
       for (const { it, idx } of indexed) {
         const div = document.createElement('div');
         div.className = 'list-item' + (it.sku ? '' : ' no-sku');
@@ -2209,6 +2300,10 @@
           syncBadge += `<span class="item-sync nolink" data-act="refresh-saldo" data-sku="${escapeHtml(it.sku)}" style="cursor:pointer" title="Atualizar saldo OLIST agora">🔄</span>`;
         } else {
           syncBadge = `<span class="item-sync nolink">não vinculado</span>`;
+        }
+        // v27.5: badge indicando que item veio (originalmente) de outro aparelho
+        if (it.from_other_device) {
+          syncBadge += ` <span class="item-sync nolink" style="opacity:0.7" title="Bipado em outro aparelho">↻ outro aparelho</span>`;
         }
         // Badge de enrichment (v24, atualizado v25.7 com kit_manual + existing)
         if (it.enrich_status === 'enriching') {
@@ -2245,6 +2340,20 @@
           <button class="remove" data-act="remove">✕</button>
         `;
         itemList.appendChild(div);
+      }
+      // v27.5: Controles de paginação (só mostra se >1 página)
+      if (totalPages > 1) {
+        const pg = document.createElement('div');
+        pg.className = 'pagination';
+        pg.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;margin-top:8px;border-top:1px solid var(--border);font-size:14px';
+        const prevDisabled = currentPage <= 1 ? 'disabled' : '';
+        const nextDisabled = currentPage >= totalPages ? 'disabled' : '';
+        pg.innerHTML = `
+          <button data-act="prev-page" ${prevDisabled} style="padding:8px 14px;background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;${prevDisabled?'opacity:0.4;cursor:not-allowed':''}">← anterior</button>
+          <span style="text-align:center">Página <strong>${currentPage}</strong> de ${totalPages}<br><span style="font-size:11px;opacity:0.7">${indexedAll.length} itens · ${pageStart + 1}–${Math.min(pageEnd, indexedAll.length)}</span></span>
+          <button data-act="next-page" ${nextDisabled} style="padding:8px 14px;background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;${nextDisabled?'opacity:0.4;cursor:not-allowed':''}">próxima →</button>
+        `;
+        itemList.appendChild(pg);
       }
     }
     updateSyncStatusBar();
@@ -3086,6 +3195,7 @@
 
   listSearchEl.addEventListener('input', () => {
     listFilter = listSearchEl.value;
+    currentPage = 1; // v27.5: filtro reset reseta página
     render();
   });
 
@@ -3096,6 +3206,21 @@
       const idx = Number(row.dataset.idx);
       showLastScan(items[idx].ean, true);
       window.scrollTo({ top: lastScanBox.offsetTop - 60, behavior: 'smooth' });
+      return;
+    }
+    // v27.5: paginação prev/next
+    const prevBtn = e.target.closest('[data-act="prev-page"]');
+    if (prevBtn && !prevBtn.disabled) {
+      currentPage = Math.max(1, currentPage - 1);
+      render();
+      itemList.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    const nextBtn = e.target.closest('[data-act="next-page"]');
+    if (nextBtn && !nextBtn.disabled) {
+      currentPage = currentPage + 1;
+      render();
+      itemList.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     // v27.4: botao 🔄 atualiza saldo OLIST do item agora (sem cache)
@@ -3478,11 +3603,19 @@
 
   // v27: D1 session (multi-device shared state). Pega/cria sessão ativa,
   // hidrata mudanças de outros aparelhos, e inicia polling pra real-time.
-  ensureD1Session().then(sid => {
+  // v27.5: hydrateFromD1 carrega TODO histórico da sessão (não só os novos)
+  // — garante que aparelho aberto depois vê o que outros já bipram.
+  ensureD1Session().then(async sid => {
     if (sid) {
       console.log(`[d1] sessão ativa ${sid} · device ${deviceId}`);
-      pollNewScans();         // hidrata uma vez agora
-      startPollingScans();     // polling a cada 5s
+      // Espera catálogo ter algo (necessário pra resolver sku→nome)
+      let waitCatalog = 0;
+      while (catalog.length === 0 && waitCatalog < 50) {
+        await new Promise(r => setTimeout(r, 200));
+        waitCatalog++;
+      }
+      await hydrateFromD1();   // v27.5: carrega TODO histórico de bipes da sessão
+      startPollingScans();     // polling a cada 5s pra novos
     }
   });
 

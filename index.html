@@ -969,6 +969,9 @@
   body.count-mode .session-row{display:none !important}
   #count-panel{display:none}
   body.count-mode #count-panel{display:block}
+  #cnt-cam-btn{display:none}
+  body.count-mode #cnt-cam-btn{display:block;margin:6px 0 10px;font-size:16px;padding:15px}
+  body.count-mode #cnt-cam-btn.hidden{display:none !important}
   body.count-mode .count-toggle{position:sticky;top:0;z-index:30}
 
   .count-panel{padding:0 2px}
@@ -1047,6 +1050,7 @@
       </div>
       <div id="scan-status">📡 detectando...</div>
     </div>
+    <button id="cnt-cam-btn" class="btn-primary btn-block" type="button">📷 Abrir câmera pra bipar</button>
     <div class="mode-cards" id="mode-cards">
       <button id="btn-mode-estoque" class="mode-card mode-estoque" type="button">
         <div class="mode-icon">🔁</div>
@@ -4025,6 +4029,7 @@
     document.body.classList.add('count-mode');
     $('btn-count-toggle').classList.add('on');
     $('btn-count-toggle').textContent='✖ Sair da Contagem';
+    if(scanner&&scanner.isScanning){ $('cnt-cam-btn').classList.add('hidden'); } else { $('cnt-cam-btn').classList.remove('hidden'); }
     if(!catalog||catalog.length===0){ try{ await fetchCatalogFromWorker({fresh:false}); }catch{} }
     await cntEnsureSession();
     await cntPoll();
@@ -4039,12 +4044,15 @@
     $('btn-count-toggle').classList.remove('on');
     $('btn-count-toggle').textContent='📦 Contar Estoque (do zero)';
     if(cntPollTimer){ clearInterval(cntPollTimer); cntPollTimer=null; }
+    try{ if(scanner&&scanner.isScanning) stopCamera(); }catch{}
     cntPush();
   }
   function cntToggle(){ cntMode?cntExit():cntEnter(); }
 
   // binds do modo contagem
   $('btn-count-toggle').addEventListener('click', cntToggle);
+  $('cnt-cam-btn').addEventListener('click', ()=>{ startCamera(); $('cnt-cam-btn').classList.add('hidden'); });
+  btnCameraStop.addEventListener('click', ()=>{ if(cntMode) $('cnt-cam-btn').classList.remove('hidden'); });
   $('cnt-export').addEventListener('click', cntExport);
   $('cnt-nova').addEventListener('click', cntNova);
   $('cnt-refresh').addEventListener('click', ()=>{ fetchCatalogFromWorker({fresh:true}).catch(()=>{}); cntPoll(); cntPush(); toast('Atualizando…'); });

@@ -989,9 +989,10 @@
   .cnt-last-q{display:flex;justify-content:space-between;margin-top:10px;font-size:13px;color:var(--text-dim)}
   .cnt-last-q b{font-size:22px;font-family:'Cormorant Garamond',serif} .cnt-last-q span:first-child b{color:var(--gold)} .cnt-last-q span:last-child b{color:#5fae6b}
   .cnt-last-ctl{display:flex;align-items:center;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:11px}
-  .cnt-last-ctl-lbl{font-size:13px;color:var(--text-dim);flex:1}
   .cnt-last-ctl button{width:46px;height:46px;border-radius:11px;border:1px solid var(--gold);background:var(--surface-2);color:var(--gold);font-size:26px;font-weight:700;cursor:pointer;line-height:1;flex:0 0 auto}
   .cnt-last-ctl button:active{background:var(--gold);color:#1a1410}
+  #cnt-last-done{flex:1;width:auto;font-size:16px;border-color:#5fae6b;color:#7ed18a;background:rgba(95,174,107,.14)}
+  #cnt-last-done:active{background:#5fae6b;color:#10240f}
   #cnt-last-qty{width:72px;height:46px;text-align:center;font-size:22px;font-weight:700;font-family:'Cormorant Garamond',serif;background:var(--surface-2);border:2px solid var(--gold);border-radius:11px;color:var(--gold);flex:0 0 auto;-moz-appearance:textfield}
   #cnt-last-qty::-webkit-outer-spin-button,#cnt-last-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .cnt-search-box{display:none;background:var(--surface);border:1px dashed var(--gold);border-radius:14px;padding:13px;margin-bottom:12px}
@@ -1152,10 +1153,10 @@
       <div class="cnt-last-sku" id="cnt-last-sku">—</div>
       <div class="cnt-last-q"><span>você contou: <b id="cnt-last-you">0</b></span><span>total (todos): <b id="cnt-last-tot">0</b></span></div>
       <div class="cnt-last-ctl">
-        <span class="cnt-last-ctl-lbl">Quantidade (você):</span>
         <button id="cnt-last-minus" type="button">−</button>
         <input id="cnt-last-qty" type="number" inputmode="numeric" pattern="[0-9]*" min="0">
         <button id="cnt-last-plus" type="button">+</button>
+        <button id="cnt-last-done" type="button">✓ Feito</button>
       </div>
     </div>
 
@@ -4200,6 +4201,8 @@
   $('cnt-last-minus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,(cntCounts[k]||0)-1)); cntShowLast(k); } });
   $('cnt-last-plus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k,(cntCounts[k]||0)+1); cntShowLast(k); } });
   $('cnt-last-qty').addEventListener('change', e=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,parseInt(e.target.value,10)||0)); cntShowLast(k); } });
+  // "Feito": aplica a quantidade do campo, sobe na hora e fecha o card pra bipar o próximo
+  $('cnt-last-done').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,parseInt($('cnt-last-qty').value,10)||0)); cntPush(); } $('cnt-last').classList.remove('show'); cntLastCode=''; });
   $('cnt-search-input').addEventListener('input', e=>cntRunSearch(e.target.value));
   $('cnt-list').addEventListener('click', e=>{
     const el=e.target.closest('[data-cnt]'); if(!el) return;

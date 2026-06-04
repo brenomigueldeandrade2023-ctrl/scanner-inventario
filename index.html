@@ -988,6 +988,12 @@
   .cnt-last-sku{font-size:12px;color:var(--text-dim);font-family:Menlo,Consolas,monospace;margin-top:2px}
   .cnt-last-q{display:flex;justify-content:space-between;margin-top:10px;font-size:13px;color:var(--text-dim)}
   .cnt-last-q b{font-size:22px;font-family:'Cormorant Garamond',serif} .cnt-last-q span:first-child b{color:var(--gold)} .cnt-last-q span:last-child b{color:#5fae6b}
+  .cnt-last-ctl{display:flex;align-items:center;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:11px}
+  .cnt-last-ctl-lbl{font-size:13px;color:var(--text-dim);flex:1}
+  .cnt-last-ctl button{width:46px;height:46px;border-radius:11px;border:1px solid var(--gold);background:var(--surface-2);color:var(--gold);font-size:26px;font-weight:700;cursor:pointer;line-height:1;flex:0 0 auto}
+  .cnt-last-ctl button:active{background:var(--gold);color:#1a1410}
+  #cnt-last-qty{width:72px;height:46px;text-align:center;font-size:22px;font-weight:700;font-family:'Cormorant Garamond',serif;background:var(--surface-2);border:2px solid var(--gold);border-radius:11px;color:var(--gold);flex:0 0 auto;-moz-appearance:textfield}
+  #cnt-last-qty::-webkit-outer-spin-button,#cnt-last-qty::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .cnt-search-box{display:none;background:var(--surface);border:1px dashed var(--gold);border-radius:14px;padding:13px;margin-bottom:12px}
   .cnt-search-box.show{display:block}
   .cnt-search-title{font-size:13px;color:var(--gold);margin-bottom:8px}
@@ -1145,6 +1151,12 @@
       <div class="cnt-last-name" id="cnt-last-name">—</div>
       <div class="cnt-last-sku" id="cnt-last-sku">—</div>
       <div class="cnt-last-q"><span>você contou: <b id="cnt-last-you">0</b></span><span>total (todos): <b id="cnt-last-tot">0</b></span></div>
+      <div class="cnt-last-ctl">
+        <span class="cnt-last-ctl-lbl">Quantidade (você):</span>
+        <button id="cnt-last-minus" type="button">−</button>
+        <input id="cnt-last-qty" type="number" inputmode="numeric" pattern="[0-9]*" min="0">
+        <button id="cnt-last-plus" type="button">+</button>
+      </div>
     </div>
 
     <div class="cnt-search-box" id="cnt-search-box">
@@ -3908,11 +3920,31 @@
     if(ean===cntLastCode && (now-cntLastAt)<CNT_SAME_CODE_MS) return; // anti multi-frame da câmera
     cntLastCode=ean; cntLastAt=now;
     let prod=eanIndex.get(ean) || (eanAliases[ean]&&skuIndex.get(eanAliases[ean]));
-    if(prod){ cntInc(prod.sku); return; }
-    // produto novo já registrado nesta contagem (não tem no site) → só conta +1
-    const nk='NEW:'+ean;
-    if(cntNovos[nk]){ cntInc(nk); return; }
+    let key=null;
+    if(prod) key=prod.sku;
+    else { const nk='NEW:'+ean; if(cntNovos[nk]) key=nk; }
+    if(key){
+      const atual=cntCounts[key]||0;
+      if(atual>0){ cntPerguntaAdicionar(key, atual); }  // já bipado → pergunta quantas MAIS
+      else { cntInc(key); }                             // 1ª vez → conta 1
+      return;
+    }
     feedback(true); cntOpenSearch(ean);
+  }
+
+  // re-bipe: pergunta quantas peças adicionar (em vez de só +1)
+  function cntPerguntaAdicionar(key, atual){
+    feedback(false);
+    const resp=prompt(`"${cntName(key)}"\n\nJá foi bipado ${atual} peça(s) NESTE aparelho.\nQuantas MAIS adicionar?  (vazio = +1)`, '');
+    cntLastAt=Date.now(); // estende o debounce após fechar o prompt
+    if(resp===null) return; // cancelou — não mexe
+    let add = (resp.trim()==='') ? 1 : parseInt(resp,10);
+    if(!Number.isFinite(add)) add=1;
+    if(add<0) add=0;
+    cntCounts[key]=atual+add;
+    cntSaveCounts(); cntDirty.add(key); cntSchedulePush();
+    cntShowLast(key);
+    cntScheduleRender();
   }
 
   function cntInc(key){
@@ -3958,6 +3990,7 @@
     $('cnt-last-sku').textContent=(key.indexOf('NEW:')===0)?('novo · EAN '+key.slice(4)):key;
     $('cnt-last-you').textContent=cntCounts[key]||0;
     $('cnt-last-tot').textContent=cntTotal(key);
+    const inp=$('cnt-last-qty'); if(inp && document.activeElement!==inp){ inp.value=cntCounts[key]||0; }
   }
 
   function cntSchedulePush(){ clearTimeout(cntPushTimer); cntPushTimer=setTimeout(cntPush,CNT_PUSH_MS); }
@@ -4163,6 +4196,10 @@
   $('cnt-search-cancel').addEventListener('click', cntCloseSearch);
   $('cnt-novo-toggle').addEventListener('click', ()=>cntToggleNovoForm(true));
   $('cnt-novo-salvar').addEventListener('click', cntSalvarNovo);
+  // controle de quantidade direto no card do último bipado (sem rolar até a lista)
+  $('cnt-last-minus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,(cntCounts[k]||0)-1)); cntShowLast(k); } });
+  $('cnt-last-plus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k,(cntCounts[k]||0)+1); cntShowLast(k); } });
+  $('cnt-last-qty').addEventListener('change', e=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,parseInt(e.target.value,10)||0)); cntShowLast(k); } });
   $('cnt-search-input').addEventListener('input', e=>cntRunSearch(e.target.value));
   $('cnt-list').addEventListener('click', e=>{
     const el=e.target.closest('[data-cnt]'); if(!el) return;

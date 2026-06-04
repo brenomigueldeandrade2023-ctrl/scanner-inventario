@@ -1004,6 +1004,14 @@
   #cnt-search-results{max-height:220px;overflow-y:auto;margin-bottom:8px}
   .cnt-sr{padding:10px 12px;border-radius:10px;background:var(--surface-2);margin-bottom:6px;cursor:pointer;border:1px solid transparent}
   .cnt-sr:active{border-color:var(--gold)}
+  .cnt-sr.contado{opacity:.5;cursor:not-allowed;border:1px dashed var(--border)}
+  .cnt-sr.contado .cnt-i-sku{color:#d4a96a}
+  .cnt-novo-qrow{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .cnt-novo-qrow span{font-size:14px;color:var(--text-dim);flex:1}
+  .cnt-novo-qrow button{width:44px;height:44px;border-radius:10px;border:1px solid var(--gold);background:var(--surface-2);color:var(--gold);font-size:24px;font-weight:700;cursor:pointer;flex:0 0 auto;line-height:1}
+  .cnt-novo-qrow button:active{background:var(--gold);color:#1a1410}
+  #cnt-novo-qtd{width:64px;height:44px;text-align:center;font-size:20px;font-weight:700;font-family:'Cormorant Garamond',serif;background:var(--surface-2);border:2px solid var(--gold);border-radius:10px;color:var(--gold);flex:0 0 auto;-moz-appearance:textfield}
+  #cnt-novo-qtd::-webkit-outer-spin-button,#cnt-novo-qtd::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .cnt-list-head{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 8px}
   .cnt-list-head h2{margin:0}
   .cnt-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:7px}
@@ -1170,6 +1178,12 @@
         <div style="display:flex;gap:8px">
           <input id="cnt-novo-p" class="cnt-novo-inp" inputmode="decimal" placeholder="Preço normal R$" autocomplete="off">
           <input id="cnt-novo-pm" class="cnt-novo-inp" inputmode="decimal" placeholder="Promocional R$" autocomplete="off">
+        </div>
+        <div class="cnt-novo-qrow">
+          <span>Quantidade contada:</span>
+          <button id="cnt-novo-qminus" type="button">−</button>
+          <input id="cnt-novo-qtd" type="number" inputmode="numeric" pattern="[0-9]*" min="1" value="1">
+          <button id="cnt-novo-qplus" type="button">+</button>
         </div>
         <button id="cnt-novo-salvar" class="btn-primary btn-block" type="button" style="margin-top:8px">✓ Registrar e contar</button>
       </div>
@@ -4078,7 +4092,7 @@
     $('cnt-search-results').innerHTML='<div class="cnt-empty">Se ESTÁ no site, digite o nome pra achar. Se NÃO está, use o botão abaixo.</div>';
     $('cnt-search-title').textContent=`EAN ${ean} não reconhecido:`;
     cntToggleNovoForm(false);
-    $('cnt-novo-nome').value=''; $('cnt-novo-p').value=''; $('cnt-novo-pm').value='';
+    $('cnt-novo-nome').value=''; $('cnt-novo-p').value=''; $('cnt-novo-pm').value=''; $('cnt-novo-qtd').value='1';
     try{ $('cnt-search-input').focus(); }catch{}
     $('cnt-search-box').scrollIntoView({behavior:'smooth',block:'center'});
   }
@@ -4094,12 +4108,15 @@
     if(!ean){ toast('Bipe o produto primeiro','warn'); return; }
     const nome=$('cnt-novo-nome').value.trim();
     if(!nome){ toast('Digite o nome do produto','error'); try{ $('cnt-novo-nome').focus(); }catch{} return; }
+    const qtd=Math.max(1, parseInt($('cnt-novo-qtd').value,10)||1);
     const nk='NEW:'+ean;
     cntNovos[nk]={ean,nome,p:$('cnt-novo-p').value.trim(),pm:$('cnt-novo-pm').value.trim()};
     try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
-    cntInc(nk);
+    cntCounts[nk]=(cntCounts[nk]||0)+qtd;
+    cntSaveCounts(); cntDirty.add(nk); cntSchedulePush();
+    feedback(false); cntShowLast(nk); cntScheduleRender();
     cntCloseSearch();
-    toast('Produto novo registrado: '+nome,'success');
+    toast(`Registrado: ${nome} (${qtd} pç)`,'success');
   }
   function cntRunSearch(q){
     q=normalizeKey(q);
@@ -4108,9 +4125,14 @@
     if(res.length===0){ $('cnt-search-results').innerHTML='<div class="cnt-empty">Nada encontrado</div>'; return; }
     const frag=document.createDocumentFragment();
     for(const p of res){
-      const d=document.createElement('div'); d.className='cnt-sr';
-      d.innerHTML=`<div class="cnt-i-name">${escapeHtml(p.name)}</div><div class="cnt-i-sku">${escapeHtml(p.sku)}</div>`;
-      d.onclick=()=>{ if(cntPendingEan){ saveEanAlias(cntPendingEan,p.sku); eanIndex.set(cntPendingEan,p); } cntCountOne(p); cntCloseSearch(); toast('Vinculado: '+(p.name||p.sku),'success'); };
+      const ja=cntTotal(p.sku);
+      const d=document.createElement('div'); d.className='cnt-sr'+(ja>0?' contado':'');
+      d.innerHTML=`<div class="cnt-i-name">${escapeHtml(p.name)}</div><div class="cnt-i-sku">${escapeHtml(p.sku)}${ja>0?' · ✓ já contado: '+ja:''}</div>`;
+      if(ja>0){
+        d.onclick=()=>toast(`"${p.name}" já foi contado (${ja}). Ajuste na lista de baixo se precisar.`,'warn');
+      } else {
+        d.onclick=()=>{ if(cntPendingEan){ saveEanAlias(cntPendingEan,p.sku); eanIndex.set(cntPendingEan,p); } cntInc(p.sku); cntCloseSearch(); toast('Vinculado: '+(p.name||p.sku),'success'); };
+      }
       frag.appendChild(d);
     }
     $('cnt-search-results').innerHTML=''; $('cnt-search-results').appendChild(frag);
@@ -4204,6 +4226,8 @@
   $('cnt-search-cancel').addEventListener('click', cntCloseSearch);
   $('cnt-novo-toggle').addEventListener('click', ()=>cntToggleNovoForm(true));
   $('cnt-novo-salvar').addEventListener('click', cntSalvarNovo);
+  $('cnt-novo-qminus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)-1); });
+  $('cnt-novo-qplus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)+1); });
   // controle de quantidade direto no card do último bipado (sem rolar até a lista)
   $('cnt-last-minus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,(cntCounts[k]||0)-1)); cntShowLast(k); } });
   $('cnt-last-plus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k,(cntCounts[k]||0)+1); cntShowLast(k); } });

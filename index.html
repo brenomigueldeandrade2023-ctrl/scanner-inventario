@@ -1348,12 +1348,13 @@
   // Cadastro em batch (v22)
   let cadastroInFlight = false;
   // ===== MODO CONTAGEM (v28) — estado isolado do recebimento =====
-  const LS_CNT_MODE='cnt_mode_v1', LS_CNT_SESSION='cnt_session_v1', LS_CNT_COUNTS='cnt_counts_v1', LS_CNT_PUSHED='cnt_pushed_v1', LS_CNT_NOVOS='cnt_novos_v1';
+  const LS_CNT_MODE='cnt_mode_v1', LS_CNT_SESSION='cnt_session_v1', LS_CNT_COUNTS='cnt_counts_v1', LS_CNT_PUSHED='cnt_pushed_v1', LS_CNT_NOVOS='cnt_novos_v1', LS_CNT_TOUCH='cnt_touch_v1';
   let cntMode=false;
   let cntSession=Number(localStorage.getItem(LS_CNT_SESSION))||null;
   let cntCounts=loadJSON(LS_CNT_COUNTS,{});   // {sku:qty} MINHA contagem (autoritativa, offline)
   let cntPushed=loadJSON(LS_CNT_PUSHED,{});   // {sku:qty} último valor confirmado no servidor
   let cntNovos=loadJSON(LS_CNT_NOVOS,{});     // {'NEW:ean': {ean,nome,p,pm}} produtos que NÃO têm no site
+  let cntLastTouch=loadJSON(LS_CNT_TOUCH,{}); // {sku: timestamp do último bipe NESTE aparelho} — ordena a lista (último em cima)
   let cntTotals={}, cntDevices=[];
   let cntDirty=new Set();
   let cntPushTimer=null, cntPollTimer=null, cntRenderTimer=null, cntPollCount=0;
@@ -3899,6 +3900,7 @@
   // =====================================================================
   function cntSaveCounts(){ try{ localStorage.setItem(LS_CNT_COUNTS, JSON.stringify(cntCounts)); }catch{} }
   function cntSavePushed(){ try{ localStorage.setItem(LS_CNT_PUSHED, JSON.stringify(cntPushed)); }catch{} }
+  function cntTouch(key){ cntLastTouch[key]=Date.now(); try{ localStorage.setItem(LS_CNT_TOUCH, JSON.stringify(cntLastTouch)); }catch{} }
   function cntOther(sku){ return Math.max(0, (cntTotals[sku]||0) - (cntPushed[sku]||0)); } // contribuição dos OUTROS aparelhos
   function cntTotal(sku){ return cntOther(sku) + (cntCounts[sku]||0); }                     // total exibido = outros + meu local
   function cntCsvEsc(s){ s=String(s==null?'':s); return /[;"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
@@ -3911,8 +3913,8 @@
         // Sessão mudou (alguém abriu "Nova contagem") → zera a contagem local pra não
         // contaminar a nova sessão. É assim que "Nova contagem" propaga pros 3 aparelhos.
         if(cntSession && newId!==cntSession){
-          cntCounts={}; cntPushed={}; cntNovos={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
-          try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
+          cntCounts={}; cntPushed={}; cntNovos={}; cntLastTouch={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+          try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); localStorage.setItem(LS_CNT_TOUCH, JSON.stringify(cntLastTouch)); }catch{}
           cntTotals={}; if($('cnt-last')) $('cnt-last').classList.remove('show');
         }
         cntSession=newId; localStorage.setItem(LS_CNT_SESSION,String(cntSession));
@@ -3964,6 +3966,7 @@
     if(!Number.isFinite(add)) add=1;
     if(add<0) add=0;
     cntCounts[key]=atual+add;
+    cntTouch(key);
     cntSaveCounts(); cntDirty.add(key); cntSchedulePush();
     cntShowLast(key);
     cntScheduleRender();
@@ -3971,6 +3974,7 @@
 
   function cntInc(key){
     cntCounts[key]=(cntCounts[key]||0)+1;
+    cntTouch(key);
     cntSaveCounts(); cntDirty.add(key); cntSchedulePush();
     feedback(false);
     cntShowLast(key);
@@ -4064,7 +4068,8 @@
       const isNew=sku.indexOf('NEW:')===0;
       rows.push({sku,name:cntName(sku),mine,tot,other:tot-mine,isNew,label:isNew?('novo · EAN '+sku.slice(4)):sku});
     }
-    rows.sort((a,b)=>(b.mine-a.mine)||a.name.localeCompare(b.name));
+    // último bipado NESTE aparelho fica em cima (pra não se perder); depois o resto por nome
+    rows.sort((a,b)=> ((cntLastTouch[b.sku]||0)-(cntLastTouch[a.sku]||0)) || a.name.localeCompare(b.name));
     if($('cnt-un')) $('cnt-un').textContent=un;
     if($('cnt-sk')) $('cnt-sk').textContent=nsk;
     const others=un-myUn, nDev=cntDevices.length||1;
@@ -4113,6 +4118,7 @@
     cntNovos[nk]={ean,nome,p:$('cnt-novo-p').value.trim(),pm:$('cnt-novo-pm').value.trim()};
     try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
     cntCounts[nk]=(cntCounts[nk]||0)+qtd;
+    cntTouch(nk);
     cntSaveCounts(); cntDirty.add(nk); cntSchedulePush();
     feedback(false); cntShowLast(nk); cntScheduleRender();
     cntCloseSearch();
@@ -4180,8 +4186,8 @@
         body:JSON.stringify({device_id:deviceId,name:'Contagem '+new Date().toISOString().slice(0,16)})}).then(x=>x.json());
       if(r.session){ cntSession=r.session.id; localStorage.setItem(LS_CNT_SESSION,String(cntSession)); }
     }catch{ toast('Falha ao criar sessão nova','error'); return; }
-    cntCounts={}; cntPushed={}; cntTotals={}; cntNovos={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
-    try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
+    cntCounts={}; cntPushed={}; cntTotals={}; cntNovos={}; cntLastTouch={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+    try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); localStorage.setItem(LS_CNT_TOUCH, JSON.stringify(cntLastTouch)); }catch{}
     $('cnt-last').classList.remove('show'); cntRender();
     toast('Contagem nova iniciada (zerada)','success');
   }

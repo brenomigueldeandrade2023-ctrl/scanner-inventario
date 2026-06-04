@@ -1343,8 +1343,8 @@
   let cntTotals={}, cntDevices=[];
   let cntDirty=new Set();
   let cntPushTimer=null, cntPollTimer=null, cntRenderTimer=null, cntPollCount=0;
-  let cntLastCode='', cntLastAt=0, cntPendingEan=null;
-  const CNT_POLL_MS=3000, CNT_PUSH_MS=700, CNT_SAME_CODE_MS=1200;
+  let cntLastCode='', cntLastAt=0, cntPendingEan=null, cntPromptKey=null, cntPromptAt=0;
+  const CNT_POLL_MS=3000, CNT_PUSH_MS=700, CNT_SAME_CODE_MS=1200, CNT_REPROMPT_MS=4000;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
@@ -3918,26 +3918,33 @@
     ean=String(ean).trim();
     if(!/^\d{6,14}$/.test(ean)){ toast('Código inválido','error'); return; }
     const now=Date.now();
+    // anti-loop do aviso: mesmo código ainda na frente da câmera logo após um aviso → ignora.
+    // Cada leitura ignorada RENOVA a janela; só libera ~4s depois do produto sair de vista.
+    // Bipar OUTRO código (abaixo) zera a trava na hora.
+    if(ean===cntPromptKey && (now-cntPromptAt)<CNT_REPROMPT_MS){ cntPromptAt=now; return; }
     if(ean===cntLastCode && (now-cntLastAt)<CNT_SAME_CODE_MS) return; // anti multi-frame da câmera
     cntLastCode=ean; cntLastAt=now;
+    if(ean!==cntPromptKey) cntPromptKey=null; // bipou outro código → libera a trava do aviso
     let prod=eanIndex.get(ean) || (eanAliases[ean]&&skuIndex.get(eanAliases[ean]));
     let key=null;
     if(prod) key=prod.sku;
     else { const nk='NEW:'+ean; if(cntNovos[nk]) key=nk; }
     if(key){
       const atual=cntCounts[key]||0;
-      if(atual>0){ cntPerguntaAdicionar(key, atual); }  // já bipado → pergunta quantas MAIS
-      else { cntInc(key); }                             // 1ª vez → conta 1
+      if(atual>0){ cntPerguntaAdicionar(ean, key, atual); }  // já bipado → pergunta quantas MAIS
+      else { cntInc(key); }                                  // 1ª vez → conta 1
       return;
     }
     feedback(true); cntOpenSearch(ean);
   }
 
-  // re-bipe: pergunta quantas peças adicionar (em vez de só +1)
-  function cntPerguntaAdicionar(key, atual){
+  // re-bipe: pergunta quantas peças adicionar. Trava o reaviso pro mesmo código
+  // (cntPromptKey) pra não ficar piscando o prompt com o produto na frente da câmera.
+  function cntPerguntaAdicionar(ean, key, atual){
+    cntPromptKey=ean; cntPromptAt=Date.now();
     feedback(false);
     const resp=prompt(`"${cntName(key)}"\n\nJá foi bipado ${atual} peça(s) NESTE aparelho.\nQuantas MAIS adicionar?  (vazio = +1)`, '');
-    cntLastAt=Date.now(); // estende o debounce após fechar o prompt
+    cntPromptKey=ean; cntPromptAt=Date.now(); // re-trava após fechar (renova a janela)
     if(resp===null) return; // cancelou — não mexe
     let add = (resp.trim()==='') ? 1 : parseInt(resp,10);
     if(!Number.isFinite(add)) add=1;

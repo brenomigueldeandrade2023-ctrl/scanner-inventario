@@ -992,6 +992,8 @@
   .cnt-search-box.show{display:block}
   .cnt-search-title{font-size:13px;color:var(--gold);margin-bottom:8px}
   #cnt-search-input{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;padding:11px;font-family:inherit;margin-bottom:8px}
+  .cnt-novo-inp{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;padding:11px;font-family:inherit;margin-bottom:8px}
+  .cnt-item.novo{border-left:3px solid var(--gold)}
   #cnt-search-results{max-height:220px;overflow-y:auto;margin-bottom:8px}
   .cnt-sr{padding:10px 12px;border-radius:10px;background:var(--surface-2);margin-bottom:6px;cursor:pointer;border:1px solid transparent}
   .cnt-sr:active{border-color:var(--gold)}
@@ -1146,9 +1148,18 @@
 
     <div class="cnt-search-box" id="cnt-search-box">
       <div class="cnt-search-title" id="cnt-search-title"></div>
-      <input id="cnt-search-input" placeholder="nome ou SKU do produto" autocomplete="off">
+      <input id="cnt-search-input" placeholder="nome ou SKU (se ESTÁ no site)" autocomplete="off">
       <div id="cnt-search-results"></div>
-      <button id="cnt-search-cancel" class="btn-secondary btn-block" type="button">Cancelar</button>
+      <button id="cnt-novo-toggle" class="btn-warn btn-block" type="button" style="margin-top:6px">➕ Não tem no site (cadastrar novo)</button>
+      <div id="cnt-novo-form" style="display:none;margin-top:8px">
+        <input id="cnt-novo-nome" class="cnt-novo-inp" placeholder="Nome do produto" autocomplete="off" autocapitalize="words">
+        <div style="display:flex;gap:8px">
+          <input id="cnt-novo-p" class="cnt-novo-inp" inputmode="decimal" placeholder="Preço normal R$" autocomplete="off">
+          <input id="cnt-novo-pm" class="cnt-novo-inp" inputmode="decimal" placeholder="Promocional R$" autocomplete="off">
+        </div>
+        <button id="cnt-novo-salvar" class="btn-primary btn-block" type="button" style="margin-top:8px">✓ Registrar e contar</button>
+      </div>
+      <button id="cnt-search-cancel" class="btn-secondary btn-block" type="button" style="margin-top:6px">Cancelar</button>
     </div>
 
     <div class="cnt-list-head"><h2>Contados</h2><span id="cnt-filter" style="font-size:12px;color:var(--text-dim)"></span></div>
@@ -1156,6 +1167,7 @@
 
     <div class="cnt-actions">
       <button id="cnt-export" class="btn-primary btn-block" type="button">⬇ Gerar CSV Balanço (todos os produtos)</button>
+      <button id="cnt-export-novos" class="btn-warn btn-block" type="button" style="margin-top:8px">🆕 CSV dos produtos novos (não no site)</button>
       <div class="btn-row" style="margin-top:8px;gap:8px">
         <button id="cnt-refresh" class="btn-secondary" type="button" style="flex:1">🔄 Atualizar</button>
         <button id="cnt-nova" class="btn-secondary" type="button" style="flex:1">✨ Nova contagem</button>
@@ -1308,11 +1320,12 @@
   // Cadastro em batch (v22)
   let cadastroInFlight = false;
   // ===== MODO CONTAGEM (v28) — estado isolado do recebimento =====
-  const LS_CNT_MODE='cnt_mode_v1', LS_CNT_SESSION='cnt_session_v1', LS_CNT_COUNTS='cnt_counts_v1', LS_CNT_PUSHED='cnt_pushed_v1';
+  const LS_CNT_MODE='cnt_mode_v1', LS_CNT_SESSION='cnt_session_v1', LS_CNT_COUNTS='cnt_counts_v1', LS_CNT_PUSHED='cnt_pushed_v1', LS_CNT_NOVOS='cnt_novos_v1';
   let cntMode=false;
   let cntSession=Number(localStorage.getItem(LS_CNT_SESSION))||null;
   let cntCounts=loadJSON(LS_CNT_COUNTS,{});   // {sku:qty} MINHA contagem (autoritativa, offline)
   let cntPushed=loadJSON(LS_CNT_PUSHED,{});   // {sku:qty} último valor confirmado no servidor
+  let cntNovos=loadJSON(LS_CNT_NOVOS,{});     // {'NEW:ean': {ean,nome,p,pm}} produtos que NÃO têm no site
   let cntTotals={}, cntDevices=[];
   let cntDirty=new Set();
   let cntPushTimer=null, cntPollTimer=null, cntRenderTimer=null, cntPollCount=0;
@@ -3870,7 +3883,8 @@
         // Sessão mudou (alguém abriu "Nova contagem") → zera a contagem local pra não
         // contaminar a nova sessão. É assim que "Nova contagem" propaga pros 3 aparelhos.
         if(cntSession && newId!==cntSession){
-          cntCounts={}; cntPushed={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+          cntCounts={}; cntPushed={}; cntNovos={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+          try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
           cntTotals={}; if($('cnt-last')) $('cnt-last').classList.remove('show');
         }
         cntSession=newId; localStorage.setItem(LS_CNT_SESSION,String(cntSession));
@@ -3880,6 +3894,12 @@
   }
 
   // entry point do bipe no modo contagem (chamado por onScan)
+  // nome de exibição de uma chave: SKU do catálogo OU produto novo (NEW:ean)
+  function cntName(key){
+    if(key && key.indexOf('NEW:')===0){ const n=cntNovos[key]; return n&&n.nome?('🆕 '+n.nome):('🆕 sem nome ('+key.slice(4)+')'); }
+    const p=skuIndex.get(key); return p?p.name:key;
+  }
+
   function cntScan(ean){
     ean=String(ean).trim();
     if(!/^\d{6,14}$/.test(ean)){ toast('Código inválido','error'); return; }
@@ -3887,18 +3907,21 @@
     if(ean===cntLastCode && (now-cntLastAt)<CNT_SAME_CODE_MS) return; // anti multi-frame da câmera
     cntLastCode=ean; cntLastAt=now;
     let prod=eanIndex.get(ean) || (eanAliases[ean]&&skuIndex.get(eanAliases[ean]));
-    if(!prod){ feedback(true); cntOpenSearch(ean); return; }
-    cntCountOne(prod);
+    if(prod){ cntInc(prod.sku); return; }
+    // produto novo já registrado nesta contagem (não tem no site) → só conta +1
+    const nk='NEW:'+ean;
+    if(cntNovos[nk]){ cntInc(nk); return; }
+    feedback(true); cntOpenSearch(ean);
   }
 
-  function cntCountOne(prod){
-    const sku=prod.sku;
-    cntCounts[sku]=(cntCounts[sku]||0)+1;
-    cntSaveCounts(); cntDirty.add(sku); cntSchedulePush();
+  function cntInc(key){
+    cntCounts[key]=(cntCounts[key]||0)+1;
+    cntSaveCounts(); cntDirty.add(key); cntSchedulePush();
     feedback(false);
-    cntShowLast(prod);
+    cntShowLast(key);
     cntScheduleRender();
   }
+  function cntCountOne(prod){ cntInc(prod.sku); } // compat
 
   function cntSetQty(sku,qty){
     qty=Math.max(0,Math.round(Number(qty)||0));
@@ -3906,13 +3929,13 @@
     cntSaveCounts(); cntDirty.add(sku); cntSchedulePush(); cntScheduleRender();
   }
 
-  function cntShowLast(prod){
-    const sku=prod.sku;
+  function cntShowLast(key){
     $('cnt-last').classList.add('show');
-    $('cnt-last-name').textContent=prod.name||sku;
-    $('cnt-last-sku').textContent=sku;
-    $('cnt-last-you').textContent=cntCounts[sku]||0;
-    $('cnt-last-tot').textContent=cntTotal(sku);
+    $('cnt-last').dataset.key=key;
+    $('cnt-last-name').textContent=cntName(key);
+    $('cnt-last-sku').textContent=(key.indexOf('NEW:')===0)?('novo · EAN '+key.slice(4)):key;
+    $('cnt-last-you').textContent=cntCounts[key]||0;
+    $('cnt-last-tot').textContent=cntTotal(key);
   }
 
   function cntSchedulePush(){ clearTimeout(cntPushTimer); cntPushTimer=setTimeout(cntPush,CNT_PUSH_MS); }
@@ -3949,8 +3972,8 @@
       const tot=cntTotal(sku), mine=cntCounts[sku]||0;
       if(tot<=0) continue;
       un+=tot; nsk++; myUn+=mine;
-      const p=skuIndex.get(sku);
-      rows.push({sku,name:p?p.name:sku,mine,tot,other:tot-mine});
+      const isNew=sku.indexOf('NEW:')===0;
+      rows.push({sku,name:cntName(sku),mine,tot,other:tot-mine,isNew,label:isNew?('novo · EAN '+sku.slice(4)):sku});
     }
     rows.sort((a,b)=>(b.mine-a.mine)||a.name.localeCompare(b.name));
     if($('cnt-un')) $('cnt-un').textContent=un;
@@ -3959,13 +3982,13 @@
     if($('cnt-devices')) $('cnt-devices').innerHTML=`você: <b>${myUn}</b> un · outros ${Math.max(0,nDev-1)} aparelho(s): <b>${others}</b> un`;
     if($('cnt-filter')) $('cnt-filter').textContent=rows.length?`${rows.length} produto(s)`:'';
     const lc=$('cnt-last');
-    if(lc&&lc.classList.contains('show')){ const s=$('cnt-last-sku').textContent; if(s){ $('cnt-last-you').textContent=cntCounts[s]||0; $('cnt-last-tot').textContent=cntTotal(s); } }
+    if(lc&&lc.classList.contains('show')){ const s=lc.dataset.key; if(s){ $('cnt-last-you').textContent=cntCounts[s]||0; $('cnt-last-tot').textContent=cntTotal(s); } }
     const list=$('cnt-list'); if(!list) return;
     if(rows.length===0){ list.innerHTML='<div class="cnt-empty">Nada contado ainda.<br>Abra a câmera e comece a bipar 👆</div>'; return; }
     const frag=document.createDocumentFragment();
     for(const r of rows){
-      const d=document.createElement('div'); d.className='cnt-item'+(r.mine===0&&r.other>0?' other':'');
-      d.innerHTML=`<div class="cnt-i-info"><div class="cnt-i-name">${escapeHtml(r.name)}</div><div class="cnt-i-sku">${escapeHtml(r.sku)}${r.other>0?` · +${r.other} outro(s)`:''}</div></div>`+
+      const d=document.createElement('div'); d.className='cnt-item'+(r.mine===0&&r.other>0?' other':'')+(r.isNew?' novo':'');
+      d.innerHTML=`<div class="cnt-i-info"><div class="cnt-i-name">${escapeHtml(r.name)}</div><div class="cnt-i-sku">${escapeHtml(r.label)}${r.other>0?` · +${r.other} outro(s)`:''}</div></div>`+
         `<div class="cnt-i-ctl"><button data-cnt="minus" data-sku="${escapeHtml(r.sku)}">−</button><span class="cnt-i-q" data-cnt="edit" data-sku="${escapeHtml(r.sku)}">${r.tot}</span><button data-cnt="plus" data-sku="${escapeHtml(r.sku)}">+</button></div>`;
       frag.appendChild(d);
     }
@@ -3977,12 +4000,32 @@
     cntPendingEan=ean;
     $('cnt-search-box').classList.add('show');
     $('cnt-search-input').value='';
-    $('cnt-search-results').innerHTML='<div class="cnt-empty">Digite pra buscar…</div>';
-    $('cnt-search-title').textContent=`Código ${ean} não cadastrado — busque o produto:`;
+    $('cnt-search-results').innerHTML='<div class="cnt-empty">Se ESTÁ no site, digite o nome pra achar. Se NÃO está, use o botão abaixo.</div>';
+    $('cnt-search-title').textContent=`EAN ${ean} não reconhecido:`;
+    cntToggleNovoForm(false);
+    $('cnt-novo-nome').value=''; $('cnt-novo-p').value=''; $('cnt-novo-pm').value='';
     try{ $('cnt-search-input').focus(); }catch{}
     $('cnt-search-box').scrollIntoView({behavior:'smooth',block:'center'});
   }
-  function cntCloseSearch(){ $('cnt-search-box').classList.remove('show'); cntPendingEan=null; }
+  function cntCloseSearch(){ $('cnt-search-box').classList.remove('show'); cntToggleNovoForm(false); cntPendingEan=null; }
+  function cntToggleNovoForm(show){
+    if(!$('cnt-novo-form')) return;
+    $('cnt-novo-form').style.display = show?'block':'none';
+    $('cnt-novo-toggle').style.display = show?'none':'block';
+    if(show){ try{ $('cnt-novo-nome').focus(); }catch{} $('cnt-novo-form').scrollIntoView({behavior:'smooth',block:'center'}); }
+  }
+  function cntSalvarNovo(){
+    const ean=cntPendingEan;
+    if(!ean){ toast('Bipe o produto primeiro','warn'); return; }
+    const nome=$('cnt-novo-nome').value.trim();
+    if(!nome){ toast('Digite o nome do produto','error'); try{ $('cnt-novo-nome').focus(); }catch{} return; }
+    const nk='NEW:'+ean;
+    cntNovos[nk]={ean,nome,p:$('cnt-novo-p').value.trim(),pm:$('cnt-novo-pm').value.trim()};
+    try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
+    cntInc(nk);
+    cntCloseSearch();
+    toast('Produto novo registrado: '+nome,'success');
+  }
   function cntRunSearch(q){
     q=normalizeKey(q);
     if(q.length<2){ $('cnt-search-results').innerHTML='<div class="cnt-empty">Digite ao menos 2 letras…</div>'; return; }
@@ -4003,13 +4046,34 @@
     if(!catalog||catalog.length===0){ toast('Catálogo não carregado — aperte Atualizar','warn'); return; }
     const lines=['SKU;Quantidade']; let comQty=0;
     for(const p of catalog){ const q=cntTotal(p.sku); lines.push(`${cntCsvEsc(p.sku)};${q}`); if(q>0)comQty++; }
-    for(const sku of Object.keys(cntTotals)){ if(!skuIndex.has(sku)){ lines.push(`${cntCsvEsc(sku)};${cntTotal(sku)}`); } }
+    // SKUs contados fora do catálogo, MAS pula produtos novos (NEW:) — vão no CSV próprio
+    for(const sku of Object.keys(cntTotals)){ if(!skuIndex.has(sku) && sku.indexOf('NEW:')!==0){ lines.push(`${cntCsvEsc(sku)};${cntTotal(sku)}`); } }
     const ts=new Date().toISOString().slice(0,16).replace(/[T:]/g,'-');
     const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`balanco_contagem_${ts}.csv`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-    toast(`Balanço: ${catalog.length} SKUs (${comQty} com qtd)`,'success');
+    const nNovos=Object.keys(cntNovos).filter(k=>cntTotal(k)>0).length;
+    toast(`Balanço: ${catalog.length} SKUs (${comQty} com qtd)`+(nNovos?` · ${nNovos} novos no outro CSV`:''),'success');
+  }
+
+  // CSV dos produtos que NÃO têm no site (pra eu cadastrar): EAN;Nome;P;PM;Qtd
+  function cntExportNovos(){
+    const keys=new Set([...Object.keys(cntNovos), ...Object.keys(cntCounts).filter(k=>k.indexOf('NEW:')===0), ...Object.keys(cntTotals).filter(k=>k.indexOf('NEW:')===0)]);
+    const lines=['EAN;Nome;PrecoNormal;PrecoPromocional;Quantidade']; let n=0;
+    for(const k of keys){
+      const q=cntTotal(k); if(q<=0) continue;
+      const meta=cntNovos[k]||{ean:k.slice(4),nome:'',p:'',pm:''};
+      lines.push(`${cntCsvEsc(meta.ean)};${cntCsvEsc(meta.nome)};${cntCsvEsc(meta.p)};${cntCsvEsc(meta.pm)};${q}`);
+      n++;
+    }
+    if(n===0){ toast('Nenhum produto novo (não-cadastrado) registrado','warn'); return; }
+    const ts=new Date().toISOString().slice(0,16).replace(/[T:]/g,'-');
+    const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`produtos_novos_${ts}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+    toast(`Produtos novos (não no site): ${n}`,'success');
   }
 
   async function cntNova(){
@@ -4019,7 +4083,8 @@
         body:JSON.stringify({device_id:deviceId,name:'Contagem '+new Date().toISOString().slice(0,16)})}).then(x=>x.json());
       if(r.session){ cntSession=r.session.id; localStorage.setItem(LS_CNT_SESSION,String(cntSession)); }
     }catch{ toast('Falha ao criar sessão nova','error'); return; }
-    cntCounts={}; cntPushed={}; cntTotals={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+    cntCounts={}; cntPushed={}; cntTotals={}; cntNovos={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+    try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
     $('cnt-last').classList.remove('show'); cntRender();
     toast('Contagem nova iniciada (zerada)','success');
   }
@@ -4054,9 +4119,12 @@
   $('cnt-cam-btn').addEventListener('click', ()=>{ startCamera(); $('cnt-cam-btn').classList.add('hidden'); });
   btnCameraStop.addEventListener('click', ()=>{ if(cntMode) $('cnt-cam-btn').classList.remove('hidden'); });
   $('cnt-export').addEventListener('click', cntExport);
+  $('cnt-export-novos').addEventListener('click', cntExportNovos);
   $('cnt-nova').addEventListener('click', cntNova);
   $('cnt-refresh').addEventListener('click', ()=>{ fetchCatalogFromWorker({fresh:true}).catch(()=>{}); cntPoll(); cntPush(); toast('Atualizando…'); });
   $('cnt-search-cancel').addEventListener('click', cntCloseSearch);
+  $('cnt-novo-toggle').addEventListener('click', ()=>cntToggleNovoForm(true));
+  $('cnt-novo-salvar').addEventListener('click', cntSalvarNovo);
   $('cnt-search-input').addEventListener('input', e=>cntRunSearch(e.target.value));
   $('cnt-list').addEventListener('click', e=>{
     const el=e.target.closest('[data-cnt]'); if(!el) return;

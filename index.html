@@ -1006,6 +1006,7 @@
   .cnt-i-sku{font-size:11px;color:var(--text-dim);font-family:Menlo,Consolas,monospace;margin-top:2px}
   .cnt-i-ctl{display:flex;align-items:center;gap:6px}
   .cnt-i-ctl button{width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:21px;font-weight:700;cursor:pointer;line-height:1}
+  .cnt-i-ctl .cnt-del{width:32px;height:36px;font-size:14px;border-color:#5a3030;color:#d4736a;margin-left:2px}
   .cnt-i-q{min-width:44px;text-align:center;font-size:20px;font-weight:700;font-family:'Cormorant Garamond',serif;color:var(--gold);cursor:pointer}
   .cnt-empty{text-align:center;color:var(--text-dim);padding:30px 16px;font-size:14px}
   .cnt-actions{margin:14px 0 30px}
@@ -3929,6 +3930,27 @@
     cntSaveCounts(); cntDirty.add(sku); cntSchedulePush(); cntScheduleRender();
   }
 
+  // excluir item da contagem deste aparelho + liberar o código pra bipar de novo
+  function cntRemover(sku){
+    const nome=cntName(sku);
+    if(!confirm(`Excluir "${nome}" da SUA contagem?\n\nLibera o código pra bipar de novo. Não apaga o que outro aparelho contou.`)) return;
+    delete cntCounts[sku]; cntSaveCounts(); cntDirty.add(sku);
+    if(sku.indexOf('NEW:')===0){
+      const ean=sku.slice(4);
+      delete cntNovos[sku]; try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{}
+      if(eanAliases[ean]){ delete eanAliases[ean]; eanIndex.delete(ean); try{ localStorage.setItem(LS_EAN_ALIASES, JSON.stringify(eanAliases)); }catch{} }
+    } else {
+      // remove vínculos de EAN que apontam pra esse SKU (pra refazer o vínculo)
+      for(const ean of Object.keys(eanAliases)){ if(eanAliases[ean]===sku){ delete eanAliases[ean]; eanIndex.delete(ean); } }
+      try{ localStorage.setItem(LS_EAN_ALIASES, JSON.stringify(eanAliases)); }catch{}
+    }
+    cntLastCode=''; // permite re-bipar o mesmo código na hora
+    cntPush();
+    if($('cnt-last') && $('cnt-last').dataset.key===sku) $('cnt-last').classList.remove('show');
+    cntScheduleRender();
+    toast('Removido — pode bipar de novo','success');
+  }
+
   function cntShowLast(key){
     $('cnt-last').classList.add('show');
     $('cnt-last').dataset.key=key;
@@ -3943,7 +3965,11 @@
     if(!cntSession){ await cntEnsureSession(); if(!cntSession) return; }
     if(cntDirty.size===0) return;
     const skus=[...cntDirty];
-    const entries=skus.map(sku=>({sku,qty:cntCounts[sku]||0}));
+    const entries=skus.map(sku=>{
+      const e={sku,qty:cntCounts[sku]||0};
+      if(sku.indexOf('NEW:')===0 && cntNovos[sku]){ e.nome=cntNovos[sku].nome||''; e.p=cntNovos[sku].p||''; e.pm=cntNovos[sku].pm||''; }
+      return e;
+    });
     try{
       const r=await fetch(WORKER_URL+'/count/push',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({session_id:cntSession,device_id:deviceId,entries})}).then(x=>x.json());
@@ -3959,7 +3985,15 @@
     if(cntPollCount % 5 === 0){ const prev=cntSession; await cntEnsureSession(); if(cntSession!==prev) cntRender(); }
     try{
       const r=await fetch(WORKER_URL+'/count/totals?session_id='+cntSession).then(x=>x.json());
-      if(r&&r.ok){ cntTotals=r.totals||{}; cntDevices=r.devices||[]; cntSetSync(true); cntScheduleRender(); }
+      if(r&&r.ok){
+        cntTotals=r.totals||{}; cntDevices=r.devices||[];
+        // mescla nomes/preços de produtos novos cadastrados em OUTROS aparelhos
+        if(r.metas){ let ch=false;
+          for(const k in r.metas){ if(k.indexOf('NEW:')===0 && (!cntNovos[k]||!cntNovos[k].nome)){ const m=r.metas[k]; cntNovos[k]={ean:k.slice(4),nome:m.nome,p:m.p||'',pm:m.pm||''}; ch=true; } }
+          if(ch){ try{ localStorage.setItem(LS_CNT_NOVOS, JSON.stringify(cntNovos)); }catch{} }
+        }
+        cntSetSync(true); cntScheduleRender();
+      }
     }catch{ cntSetSync(false); }
   }
   function cntSetSync(ok){ const e=$('cnt-sync'); if(e){ e.textContent=ok?'✓ sincronizado':'⚠ offline'; e.className='cnt-sync '+(ok?'ok':'off'); } }
@@ -3989,7 +4023,7 @@
     for(const r of rows){
       const d=document.createElement('div'); d.className='cnt-item'+(r.mine===0&&r.other>0?' other':'')+(r.isNew?' novo':'');
       d.innerHTML=`<div class="cnt-i-info"><div class="cnt-i-name">${escapeHtml(r.name)}</div><div class="cnt-i-sku">${escapeHtml(r.label)}${r.other>0?` · +${r.other} outro(s)`:''}</div></div>`+
-        `<div class="cnt-i-ctl"><button data-cnt="minus" data-sku="${escapeHtml(r.sku)}">−</button><span class="cnt-i-q" data-cnt="edit" data-sku="${escapeHtml(r.sku)}">${r.tot}</span><button data-cnt="plus" data-sku="${escapeHtml(r.sku)}">+</button></div>`;
+        `<div class="cnt-i-ctl"><button data-cnt="minus" data-sku="${escapeHtml(r.sku)}">−</button><span class="cnt-i-q" data-cnt="edit" data-sku="${escapeHtml(r.sku)}">${r.tot}</span><button data-cnt="plus" data-sku="${escapeHtml(r.sku)}">+</button><button class="cnt-del" data-cnt="del" data-sku="${escapeHtml(r.sku)}" title="Excluir e refazer">🗑</button></div>`;
       frag.appendChild(d);
     }
     list.innerHTML=''; list.appendChild(frag);
@@ -4099,6 +4133,10 @@
     await cntEnsureSession();
     await cntPoll();
     cntRender();
+    // sobe ao servidor os nomes/preços de produtos novos já cadastrados aqui (propaga pros outros)
+    let metaDirty=false;
+    for(const k in cntNovos){ if((cntCounts[k]||0)>0){ cntDirty.add(k); metaDirty=true; } }
+    if(metaDirty) cntPush();
     if(!cntPollTimer) cntPollTimer=setInterval(cntPoll,CNT_POLL_MS);
     toast('Modo Contagem ON · conta do zero, sem mexer no Olist','success');
     window.scrollTo({top:0,behavior:'smooth'});
@@ -4129,9 +4167,10 @@
   $('cnt-list').addEventListener('click', e=>{
     const el=e.target.closest('[data-cnt]'); if(!el) return;
     const sku=el.getAttribute('data-sku'), act=el.getAttribute('data-cnt');
-    if(act==='plus'){ const p=skuIndex.get(sku); if(p) cntCountOne(p); else cntSetQty(sku,(cntCounts[sku]||0)+1); }
+    if(act==='plus'){ cntInc(sku); }
     else if(act==='minus'){ cntSetQty(sku, Math.max(0,(cntCounts[sku]||0)-1)); }
-    else if(act==='edit'){ const v=prompt(`Quantidade que VOCÊ contou de ${sku}:`, cntCounts[sku]||0); if(v!==null) cntSetQty(sku, parseInt(v,10)||0); }
+    else if(act==='edit'){ const v=prompt(`Quantidade que VOCÊ contou de "${cntName(sku)}":`, cntCounts[sku]||0); if(v!==null) cntSetQty(sku, parseInt(v,10)||0); }
+    else if(act==='del'){ cntRemover(sku); }
   });
   // retoma modo contagem se estava ativo antes do reload
   if(localStorage.getItem(LS_CNT_MODE)==='1'){ setTimeout(()=>{ cntEnter(); }, 600); }

@@ -951,6 +951,59 @@
     cursor: pointer;
     border: 2px solid var(--surface);
   }
+
+  /* ===== MODO CONTAGEM (v28) ===== */
+  .count-toggle{display:block;width:calc(100% - 24px);margin:10px 12px 0;padding:14px;border:none;border-radius:14px;
+    background:linear-gradient(135deg,#3a2f1c,#2a2014);color:var(--gold);font-family:inherit;font-weight:700;font-size:16px;cursor:pointer;
+    border:1px solid var(--gold-dark);transition:.15s}
+  .count-toggle:active{transform:scale(.98)}
+  .count-toggle.on{background:linear-gradient(135deg,#d9b96a,#b9923f);color:#1a1410;border-color:#d9b96a}
+  body.count-mode #mode-cards,
+  body.count-mode #last-scan,
+  body.count-mode #active-mode-pill,
+  body.count-mode #recv-cat,
+  body.count-mode #recv-items,
+  body.count-mode .bottom-bar,
+  body.count-mode .brand-footer,
+  body.count-mode #session-name,
+  body.count-mode .session-row{display:none !important}
+  #count-panel{display:none}
+  body.count-mode #count-panel{display:block}
+  body.count-mode .count-toggle{position:sticky;top:0;z-index:30}
+
+  .count-panel{padding:0 2px}
+  .cnt-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0}
+  .cnt-stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 6px;text-align:center;display:flex;flex-direction:column;justify-content:center;min-height:64px}
+  .cnt-n{font-size:28px;font-weight:700;font-family:'Cormorant Garamond',serif;line-height:1;color:var(--gold)}
+  .cnt-l{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-top:5px}
+  .cnt-sync{font-size:12px;font-weight:600;color:var(--text-dim)} .cnt-sync.ok{color:#5fae6b} .cnt-sync.off{color:#d4736a}
+  .cnt-devices{font-size:12px;color:var(--text-dim);text-align:center;margin:-4px 0 12px}
+  .cnt-devices b{color:var(--gold)}
+  .cnt-last{display:none;background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--gold);border-radius:14px;padding:13px;margin-bottom:12px}
+  .cnt-last.show{display:block}
+  .cnt-last-name{font-size:16px;font-weight:600}
+  .cnt-last-sku{font-size:12px;color:var(--text-dim);font-family:Menlo,Consolas,monospace;margin-top:2px}
+  .cnt-last-q{display:flex;justify-content:space-between;margin-top:10px;font-size:13px;color:var(--text-dim)}
+  .cnt-last-q b{font-size:22px;font-family:'Cormorant Garamond',serif} .cnt-last-q span:first-child b{color:var(--gold)} .cnt-last-q span:last-child b{color:#5fae6b}
+  .cnt-search-box{display:none;background:var(--surface);border:1px dashed var(--gold);border-radius:14px;padding:13px;margin-bottom:12px}
+  .cnt-search-box.show{display:block}
+  .cnt-search-title{font-size:13px;color:var(--gold);margin-bottom:8px}
+  #cnt-search-input{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;padding:11px;font-family:inherit;margin-bottom:8px}
+  #cnt-search-results{max-height:220px;overflow-y:auto;margin-bottom:8px}
+  .cnt-sr{padding:10px 12px;border-radius:10px;background:var(--surface-2);margin-bottom:6px;cursor:pointer;border:1px solid transparent}
+  .cnt-sr:active{border-color:var(--gold)}
+  .cnt-list-head{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 8px}
+  .cnt-list-head h2{margin:0}
+  .cnt-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:7px}
+  .cnt-item.other{border-left:3px solid #6fa8c9}
+  .cnt-i-info{flex:1;min-width:0}
+  .cnt-i-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cnt-i-sku{font-size:11px;color:var(--text-dim);font-family:Menlo,Consolas,monospace;margin-top:2px}
+  .cnt-i-ctl{display:flex;align-items:center;gap:6px}
+  .cnt-i-ctl button{width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:21px;font-weight:700;cursor:pointer;line-height:1}
+  .cnt-i-q{min-width:44px;text-align:center;font-size:20px;font-weight:700;font-family:'Cormorant Garamond',serif;color:var(--gold);cursor:pointer}
+  .cnt-empty{text-align:center;color:var(--text-dim);padding:30px 16px;font-size:14px}
+  .cnt-actions{margin:14px 0 30px}
 </style>
 </head>
 <body>
@@ -965,6 +1018,8 @@
   </div>
   <div class="stats" id="stats"><strong>0</strong> itens</div>
 </header>
+
+<button id="btn-count-toggle" class="count-toggle" type="button">📦 Contar Estoque (do zero)</button>
 
 <main>
 
@@ -1071,7 +1126,40 @@
     </div>
   </section>
 
-  <section>
+  <section id="count-panel" class="count-panel">
+    <div class="cnt-stats">
+      <div class="cnt-stat"><div class="cnt-n" id="cnt-un">0</div><div class="cnt-l">unidades</div></div>
+      <div class="cnt-stat"><div class="cnt-n" id="cnt-sk">0</div><div class="cnt-l">produtos</div></div>
+      <div class="cnt-stat"><div class="cnt-sync off" id="cnt-sync">conectando</div></div>
+    </div>
+    <div class="cnt-devices" id="cnt-devices"></div>
+
+    <div class="cnt-last" id="cnt-last">
+      <div class="cnt-last-name" id="cnt-last-name">—</div>
+      <div class="cnt-last-sku" id="cnt-last-sku">—</div>
+      <div class="cnt-last-q"><span>você contou: <b id="cnt-last-you">0</b></span><span>total (todos): <b id="cnt-last-tot">0</b></span></div>
+    </div>
+
+    <div class="cnt-search-box" id="cnt-search-box">
+      <div class="cnt-search-title" id="cnt-search-title"></div>
+      <input id="cnt-search-input" placeholder="nome ou SKU do produto" autocomplete="off">
+      <div id="cnt-search-results"></div>
+      <button id="cnt-search-cancel" class="btn-secondary btn-block" type="button">Cancelar</button>
+    </div>
+
+    <div class="cnt-list-head"><h2>Contados</h2><span id="cnt-filter" style="font-size:12px;color:var(--text-dim)"></span></div>
+    <div id="cnt-list"><div class="cnt-empty">Nada contado ainda.<br>Abra a câmera e comece a bipar 👆</div></div>
+
+    <div class="cnt-actions">
+      <button id="cnt-export" class="btn-primary btn-block" type="button">⬇ Gerar CSV Balanço (todos os produtos)</button>
+      <div class="btn-row" style="margin-top:8px;gap:8px">
+        <button id="cnt-refresh" class="btn-secondary" type="button" style="flex:1">🔄 Atualizar</button>
+        <button id="cnt-nova" class="btn-secondary" type="button" style="flex:1">✨ Nova contagem</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="recv-cat">
     <h2>Catálogo OLIST <span id="sync-indicator" class="sync-indicator" title="status sync">●</span></h2>
     <div class="catalog-row">
       <div class="info">
@@ -1092,7 +1180,7 @@
     </button>
   </section>
 
-  <section>
+  <section id="recv-items">
     <h2>Itens escaneados</h2>
     <input type="text" id="list-search" class="list-search" placeholder="🔍 Buscar por nome, SKU ou EAN..." autocomplete="off">
     <div id="warn-no-sku" class="warning" style="display: none;"></div>
@@ -1215,6 +1303,17 @@
   let hidRefocusTimer = null;
   // Cadastro em batch (v22)
   let cadastroInFlight = false;
+  // ===== MODO CONTAGEM (v28) — estado isolado do recebimento =====
+  const LS_CNT_MODE='cnt_mode_v1', LS_CNT_SESSION='cnt_session_v1', LS_CNT_COUNTS='cnt_counts_v1', LS_CNT_PUSHED='cnt_pushed_v1';
+  let cntMode=false;
+  let cntSession=Number(localStorage.getItem(LS_CNT_SESSION))||null;
+  let cntCounts=loadJSON(LS_CNT_COUNTS,{});   // {sku:qty} MINHA contagem (autoritativa, offline)
+  let cntPushed=loadJSON(LS_CNT_PUSHED,{});   // {sku:qty} último valor confirmado no servidor
+  let cntTotals={}, cntDevices=[];
+  let cntDirty=new Set();
+  let cntPushTimer=null, cntPollTimer=null, cntRenderTimer=null, cntPollCount=0;
+  let cntLastCode='', cntLastAt=0, cntPendingEan=null;
+  const CNT_POLL_MS=3000, CNT_PUSH_MS=700, CNT_SAME_CODE_MS=1200;
 
   // ---------- DOM refs ----------
   const $ = (id) => document.getElementById(id);
@@ -1513,6 +1612,7 @@
   // v27.5: agora também CRIA items locais quando outro device bipa SKU
   // que este device nunca viu — assim a lista mostra TUDO que foi bipado.
   async function pollNewScans() {
+    if (cntMode) return; // v28: modo contagem usa /count/* — não polla recebimento (poupa Tiny)
     if (!d1SessionId) return;
     try {
       const r = await workerFetch(`/scans?session_id=${d1SessionId}&since_id=${lastScanId}`);
@@ -1634,6 +1734,7 @@
   // Em background, atualiza items[] conforme vai recebendo (progresso visual).
   let loadAllStockInProgress = false;
   async function loadAllStockFromOlist(forceFresh = false) {
+    if (cntMode) return null; // v28: modo contagem não usa saldo do Olist
     if (loadAllStockInProgress) return null;
     loadAllStockInProgress = true;
     setWorkerStatus('syncing', 'Carregando estoque OLIST...');
@@ -2479,6 +2580,8 @@
   let scanInProgress = false;
   async function onScan(ean) {
     ean = String(ean).trim();
+    // MODO CONTAGEM (v28): desvia pro fluxo offline isolado (conta do zero, sem Olist)
+    if (cntMode) { cntScan(ean); return; }
     if (!ean || !/^\d{6,14}$/.test(ean)) {
       toast('EAN inválido', 'error');
       return;
@@ -3745,10 +3848,223 @@
     }
   });
 
+  // =====================================================================
+  // MODO CONTAGEM (v28) — funções. Offline-first: bipe NÃO toca no Olist.
+  // Conta do zero, soma os aparelhos via D1 (/count/*), CSV balanço no fim.
+  // =====================================================================
+  function cntSaveCounts(){ try{ localStorage.setItem(LS_CNT_COUNTS, JSON.stringify(cntCounts)); }catch{} }
+  function cntSavePushed(){ try{ localStorage.setItem(LS_CNT_PUSHED, JSON.stringify(cntPushed)); }catch{} }
+  function cntOther(sku){ return Math.max(0, (cntTotals[sku]||0) - (cntPushed[sku]||0)); } // contribuição dos OUTROS aparelhos
+  function cntTotal(sku){ return cntOther(sku) + (cntCounts[sku]||0); }                     // total exibido = outros + meu local
+  function cntCsvEsc(s){ s=String(s==null?'':s); return /[;"\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+
+  async function cntEnsureSession(){
+    try{
+      const r=await fetch(WORKER_URL+'/count/session?device_id='+encodeURIComponent(deviceId)).then(x=>x.json());
+      if(r.session&&r.session.id){
+        const newId=r.session.id;
+        // Sessão mudou (alguém abriu "Nova contagem") → zera a contagem local pra não
+        // contaminar a nova sessão. É assim que "Nova contagem" propaga pros 3 aparelhos.
+        if(cntSession && newId!==cntSession){
+          cntCounts={}; cntPushed={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+          cntTotals={}; if($('cnt-last')) $('cnt-last').classList.remove('show');
+        }
+        cntSession=newId; localStorage.setItem(LS_CNT_SESSION,String(cntSession));
+      }
+    }catch{}
+    return cntSession;
+  }
+
+  // entry point do bipe no modo contagem (chamado por onScan)
+  function cntScan(ean){
+    ean=String(ean).trim();
+    if(!/^\d{6,14}$/.test(ean)){ toast('Código inválido','error'); return; }
+    const now=Date.now();
+    if(ean===cntLastCode && (now-cntLastAt)<CNT_SAME_CODE_MS) return; // anti multi-frame da câmera
+    cntLastCode=ean; cntLastAt=now;
+    let prod=eanIndex.get(ean) || (eanAliases[ean]&&skuIndex.get(eanAliases[ean]));
+    if(!prod){ feedback(true); cntOpenSearch(ean); return; }
+    cntCountOne(prod);
+  }
+
+  function cntCountOne(prod){
+    const sku=prod.sku;
+    cntCounts[sku]=(cntCounts[sku]||0)+1;
+    cntSaveCounts(); cntDirty.add(sku); cntSchedulePush();
+    feedback(false);
+    cntShowLast(prod);
+    cntScheduleRender();
+  }
+
+  function cntSetQty(sku,qty){
+    qty=Math.max(0,Math.round(Number(qty)||0));
+    if(qty===0) delete cntCounts[sku]; else cntCounts[sku]=qty;
+    cntSaveCounts(); cntDirty.add(sku); cntSchedulePush(); cntScheduleRender();
+  }
+
+  function cntShowLast(prod){
+    const sku=prod.sku;
+    $('cnt-last').classList.add('show');
+    $('cnt-last-name').textContent=prod.name||sku;
+    $('cnt-last-sku').textContent=sku;
+    $('cnt-last-you').textContent=cntCounts[sku]||0;
+    $('cnt-last-tot').textContent=cntTotal(sku);
+  }
+
+  function cntSchedulePush(){ clearTimeout(cntPushTimer); cntPushTimer=setTimeout(cntPush,CNT_PUSH_MS); }
+  async function cntPush(){
+    if(!cntSession){ await cntEnsureSession(); if(!cntSession) return; }
+    if(cntDirty.size===0) return;
+    const skus=[...cntDirty];
+    const entries=skus.map(sku=>({sku,qty:cntCounts[sku]||0}));
+    try{
+      const r=await fetch(WORKER_URL+'/count/push',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({session_id:cntSession,device_id:deviceId,entries})}).then(x=>x.json());
+      if(r&&r.ok){ for(const sku of skus){ cntPushed[sku]=cntCounts[sku]||0; cntDirty.delete(sku); } cntSavePushed(); }
+    }catch{ /* mantém dirty, retenta */ }
+  }
+
+  async function cntPoll(){
+    if(!cntSession) return;
+    // a cada ~15s re-checa a sessão ativa — assim "Nova contagem" feita em outro
+    // aparelho zera este também (cntEnsureSession detecta a troca e limpa o local)
+    cntPollCount++;
+    if(cntPollCount % 5 === 0){ const prev=cntSession; await cntEnsureSession(); if(cntSession!==prev) cntRender(); }
+    try{
+      const r=await fetch(WORKER_URL+'/count/totals?session_id='+cntSession).then(x=>x.json());
+      if(r&&r.ok){ cntTotals=r.totals||{}; cntDevices=r.devices||[]; cntSetSync(true); cntScheduleRender(); }
+    }catch{ cntSetSync(false); }
+  }
+  function cntSetSync(ok){ const e=$('cnt-sync'); if(e){ e.textContent=ok?'✓ sincronizado':'⚠ offline'; e.className='cnt-sync '+(ok?'ok':'off'); } }
+
+  function cntScheduleRender(){ clearTimeout(cntRenderTimer); cntRenderTimer=setTimeout(cntRender,180); }
+  function cntRender(){
+    const allSkus=new Set([...Object.keys(cntCounts),...Object.keys(cntTotals)]);
+    let un=0,nsk=0,myUn=0; const rows=[];
+    for(const sku of allSkus){
+      const tot=cntTotal(sku), mine=cntCounts[sku]||0;
+      if(tot<=0) continue;
+      un+=tot; nsk++; myUn+=mine;
+      const p=skuIndex.get(sku);
+      rows.push({sku,name:p?p.name:sku,mine,tot,other:tot-mine});
+    }
+    rows.sort((a,b)=>(b.mine-a.mine)||a.name.localeCompare(b.name));
+    if($('cnt-un')) $('cnt-un').textContent=un;
+    if($('cnt-sk')) $('cnt-sk').textContent=nsk;
+    const others=un-myUn, nDev=cntDevices.length||1;
+    if($('cnt-devices')) $('cnt-devices').innerHTML=`você: <b>${myUn}</b> un · outros ${Math.max(0,nDev-1)} aparelho(s): <b>${others}</b> un`;
+    if($('cnt-filter')) $('cnt-filter').textContent=rows.length?`${rows.length} produto(s)`:'';
+    const lc=$('cnt-last');
+    if(lc&&lc.classList.contains('show')){ const s=$('cnt-last-sku').textContent; if(s){ $('cnt-last-you').textContent=cntCounts[s]||0; $('cnt-last-tot').textContent=cntTotal(s); } }
+    const list=$('cnt-list'); if(!list) return;
+    if(rows.length===0){ list.innerHTML='<div class="cnt-empty">Nada contado ainda.<br>Abra a câmera e comece a bipar 👆</div>'; return; }
+    const frag=document.createDocumentFragment();
+    for(const r of rows){
+      const d=document.createElement('div'); d.className='cnt-item'+(r.mine===0&&r.other>0?' other':'');
+      d.innerHTML=`<div class="cnt-i-info"><div class="cnt-i-name">${escapeHtml(r.name)}</div><div class="cnt-i-sku">${escapeHtml(r.sku)}${r.other>0?` · +${r.other} outro(s)`:''}</div></div>`+
+        `<div class="cnt-i-ctl"><button data-cnt="minus" data-sku="${escapeHtml(r.sku)}">−</button><span class="cnt-i-q" data-cnt="edit" data-sku="${escapeHtml(r.sku)}">${r.tot}</span><button data-cnt="plus" data-sku="${escapeHtml(r.sku)}">+</button></div>`;
+      frag.appendChild(d);
+    }
+    list.innerHTML=''; list.appendChild(frag);
+  }
+
+  // busca manual quando o EAN não está cadastrado
+  function cntOpenSearch(ean){
+    cntPendingEan=ean;
+    $('cnt-search-box').classList.add('show');
+    $('cnt-search-input').value='';
+    $('cnt-search-results').innerHTML='<div class="cnt-empty">Digite pra buscar…</div>';
+    $('cnt-search-title').textContent=`Código ${ean} não cadastrado — busque o produto:`;
+    try{ $('cnt-search-input').focus(); }catch{}
+    $('cnt-search-box').scrollIntoView({behavior:'smooth',block:'center'});
+  }
+  function cntCloseSearch(){ $('cnt-search-box').classList.remove('show'); cntPendingEan=null; }
+  function cntRunSearch(q){
+    q=normalizeKey(q);
+    if(q.length<2){ $('cnt-search-results').innerHTML='<div class="cnt-empty">Digite ao menos 2 letras…</div>'; return; }
+    const res=catalog.filter(p=>normalizeKey(p.name).includes(q)||normalizeKey(p.sku).includes(q)).slice(0,30);
+    if(res.length===0){ $('cnt-search-results').innerHTML='<div class="cnt-empty">Nada encontrado</div>'; return; }
+    const frag=document.createDocumentFragment();
+    for(const p of res){
+      const d=document.createElement('div'); d.className='cnt-sr';
+      d.innerHTML=`<div class="cnt-i-name">${escapeHtml(p.name)}</div><div class="cnt-i-sku">${escapeHtml(p.sku)}</div>`;
+      d.onclick=()=>{ if(cntPendingEan){ saveEanAlias(cntPendingEan,p.sku); eanIndex.set(cntPendingEan,p); } cntCountOne(p); cntCloseSearch(); toast('Vinculado: '+(p.name||p.sku),'success'); };
+      frag.appendChild(d);
+    }
+    $('cnt-search-results').innerHTML=''; $('cnt-search-results').appendChild(frag);
+  }
+
+  // CSV balanço COMPLETO: todo SKU ativo (contados=total agregado, resto=0)
+  function cntExport(){
+    if(!catalog||catalog.length===0){ toast('Catálogo não carregado — aperte Atualizar','warn'); return; }
+    const lines=['SKU;Quantidade']; let comQty=0;
+    for(const p of catalog){ const q=cntTotal(p.sku); lines.push(`${cntCsvEsc(p.sku)};${q}`); if(q>0)comQty++; }
+    for(const sku of Object.keys(cntTotals)){ if(!skuIndex.has(sku)){ lines.push(`${cntCsvEsc(sku)};${cntTotal(sku)}`); } }
+    const ts=new Date().toISOString().slice(0,16).replace(/[T:]/g,'-');
+    const blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`balanco_contagem_${ts}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+    toast(`Balanço: ${catalog.length} SKUs (${comQty} com qtd)`,'success');
+  }
+
+  async function cntNova(){
+    if(!confirm('Começar contagem NOVA do zero?\n\nIsso zera a contagem de TODOS os aparelhos. Use só quando for recomeçar.')) return;
+    try{
+      const r=await fetch(WORKER_URL+'/count/session/new',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({device_id:deviceId,name:'Contagem '+new Date().toISOString().slice(0,16)})}).then(x=>x.json());
+      if(r.session){ cntSession=r.session.id; localStorage.setItem(LS_CNT_SESSION,String(cntSession)); }
+    }catch{ toast('Falha ao criar sessão nova','error'); return; }
+    cntCounts={}; cntPushed={}; cntTotals={}; cntDirty.clear(); cntSaveCounts(); cntSavePushed();
+    $('cnt-last').classList.remove('show'); cntRender();
+    toast('Contagem nova iniciada (zerada)','success');
+  }
+
+  async function cntEnter(){
+    cntMode=true; localStorage.setItem(LS_CNT_MODE,'1');
+    document.body.classList.add('count-mode');
+    $('btn-count-toggle').classList.add('on');
+    $('btn-count-toggle').textContent='✖ Sair da Contagem';
+    if(!catalog||catalog.length===0){ try{ await fetchCatalogFromWorker({fresh:false}); }catch{} }
+    await cntEnsureSession();
+    await cntPoll();
+    cntRender();
+    if(!cntPollTimer) cntPollTimer=setInterval(cntPoll,CNT_POLL_MS);
+    toast('Modo Contagem ON · conta do zero, sem mexer no Olist','success');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function cntExit(){
+    cntMode=false; localStorage.setItem(LS_CNT_MODE,'0');
+    document.body.classList.remove('count-mode');
+    $('btn-count-toggle').classList.remove('on');
+    $('btn-count-toggle').textContent='📦 Contar Estoque (do zero)';
+    if(cntPollTimer){ clearInterval(cntPollTimer); cntPollTimer=null; }
+    cntPush();
+  }
+  function cntToggle(){ cntMode?cntExit():cntEnter(); }
+
+  // binds do modo contagem
+  $('btn-count-toggle').addEventListener('click', cntToggle);
+  $('cnt-export').addEventListener('click', cntExport);
+  $('cnt-nova').addEventListener('click', cntNova);
+  $('cnt-refresh').addEventListener('click', ()=>{ fetchCatalogFromWorker({fresh:true}).catch(()=>{}); cntPoll(); cntPush(); toast('Atualizando…'); });
+  $('cnt-search-cancel').addEventListener('click', cntCloseSearch);
+  $('cnt-search-input').addEventListener('input', e=>cntRunSearch(e.target.value));
+  $('cnt-list').addEventListener('click', e=>{
+    const el=e.target.closest('[data-cnt]'); if(!el) return;
+    const sku=el.getAttribute('data-sku'), act=el.getAttribute('data-cnt');
+    if(act==='plus'){ const p=skuIndex.get(sku); if(p) cntCountOne(p); else cntSetQty(sku,(cntCounts[sku]||0)+1); }
+    else if(act==='minus'){ cntSetQty(sku, Math.max(0,(cntCounts[sku]||0)-1)); }
+    else if(act==='edit'){ const v=prompt(`Quantidade que VOCÊ contou de ${sku}:`, cntCounts[sku]||0); if(v!==null) cntSetQty(sku, parseInt(v,10)||0); }
+  });
+  // retoma modo contagem se estava ativo antes do reload
+  if(localStorage.getItem(LS_CNT_MODE)==='1'){ setTimeout(()=>{ cntEnter(); }, 600); }
+
   // v27.4: auto-refresh saldos OLIST dos items vinculados a cada 15s.
   // Mantém badge "APP X ✓/⚠ OLIST Y" sempre atualizada sem usuario clicar.
   // Bate em /saldos batch (max 8 por chunk) — Tiny suporta.
   async function autoPollSaldos() {
+    if (cntMode) return; // v28: pausa no modo contagem pra não saturar o Tiny com 3 aparelhos
     const skusComId = items
       .filter(i => i.sku)
       .map(i => {

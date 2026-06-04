@@ -1014,6 +1014,8 @@
   #cnt-novo-qtd::-webkit-outer-spin-button,#cnt-novo-qtd::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .cnt-list-head{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 8px}
   .cnt-list-head h2{margin:0}
+  .cnt-list-search{width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:15px;padding:11px 13px;font-family:inherit;margin-bottom:10px}
+  .cnt-list-search:focus{outline:none;border-color:var(--gold)}
   .cnt-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:7px}
   .cnt-item.other{border-left:3px solid #6fa8c9}
   .cnt-i-info{flex:1;min-width:0}
@@ -1191,6 +1193,7 @@
     </div>
 
     <div class="cnt-list-head"><h2>Contados</h2><span id="cnt-filter" style="font-size:12px;color:var(--text-dim)"></span></div>
+    <input id="cnt-list-search" class="cnt-list-search" placeholder="🔍 procurar produto já bipado (nome ou SKU)" autocomplete="off">
     <div id="cnt-list"><div class="cnt-empty">Nada contado ainda.<br>Abra a câmera e comece a bipar 👆</div></div>
 
     <div class="cnt-actions">
@@ -1358,7 +1361,7 @@
   let cntTotals={}, cntDevices=[];
   let cntDirty=new Set();
   let cntPushTimer=null, cntPollTimer=null, cntRenderTimer=null, cntPollCount=0;
-  let cntLastCode='', cntLastAt=0, cntPendingEan=null, cntPromptKey=null, cntPromptAt=0;
+  let cntLastCode='', cntLastAt=0, cntPendingEan=null, cntPromptKey=null, cntPromptAt=0, cntListFilter='';
   const CNT_POLL_MS=3000, CNT_PUSH_MS=700, CNT_SAME_CODE_MS=1200, CNT_REPROMPT_MS=4000;
 
   // ---------- DOM refs ----------
@@ -4074,13 +4077,17 @@
     if($('cnt-sk')) $('cnt-sk').textContent=nsk;
     const others=un-myUn, nDev=cntDevices.length||1;
     if($('cnt-devices')) $('cnt-devices').innerHTML=`você: <b>${myUn}</b> un · outros ${Math.max(0,nDev-1)} aparelho(s): <b>${others}</b> un`;
-    if($('cnt-filter')) $('cnt-filter').textContent=rows.length?`${rows.length} produto(s)`:'';
+    // filtro "procurar produto bipado" — filtra só a LISTA; os totais no topo continuam do geral
+    const fq = cntListFilter ? normalizeKey(cntListFilter) : '';
+    const visible = fq ? rows.filter(r=> normalizeKey(r.name).includes(fq) || normalizeKey(r.sku).includes(fq)) : rows;
+    if($('cnt-filter')) $('cnt-filter').textContent = fq ? `${visible.length} de ${rows.length}` : (rows.length?`${rows.length} produto(s)`:'');
     const lc=$('cnt-last');
     if(lc&&lc.classList.contains('show')){ const s=lc.dataset.key; if(s){ $('cnt-last-you').textContent=cntCounts[s]||0; $('cnt-last-tot').textContent=cntTotal(s); } }
     const list=$('cnt-list'); if(!list) return;
     if(rows.length===0){ list.innerHTML='<div class="cnt-empty">Nada contado ainda.<br>Abra a câmera e comece a bipar 👆</div>'; return; }
+    if(visible.length===0){ list.innerHTML='<div class="cnt-empty">Nenhum bipado com “'+escapeHtml(cntListFilter)+'”</div>'; return; }
     const frag=document.createDocumentFragment();
-    for(const r of rows){
+    for(const r of visible){
       const d=document.createElement('div'); d.className='cnt-item'+(r.mine===0&&r.other>0?' other':'')+(r.isNew?' novo':'');
       d.innerHTML=`<div class="cnt-i-info"><div class="cnt-i-name">${escapeHtml(r.name)}</div><div class="cnt-i-sku">${escapeHtml(r.label)}${r.other>0?` · +${r.other} outro(s)`:''}</div></div>`+
         `<div class="cnt-i-ctl"><button data-cnt="minus" data-sku="${escapeHtml(r.sku)}">−</button><span class="cnt-i-q" data-cnt="edit" data-sku="${escapeHtml(r.sku)}">${r.tot}</span><button data-cnt="plus" data-sku="${escapeHtml(r.sku)}">+</button><button class="cnt-del" data-cnt="del" data-sku="${escapeHtml(r.sku)}" title="Excluir e refazer">🗑</button></div>`;
@@ -4234,6 +4241,7 @@
   $('cnt-novo-salvar').addEventListener('click', cntSalvarNovo);
   $('cnt-novo-qminus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)-1); });
   $('cnt-novo-qplus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)+1); });
+  $('cnt-list-search').addEventListener('input', e=>{ cntListFilter=e.target.value; cntScheduleRender(); });
   // controle de quantidade direto no card do último bipado (sem rolar até a lista)
   $('cnt-last-minus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,(cntCounts[k]||0)-1)); cntShowLast(k); } });
   $('cnt-last-plus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k,(cntCounts[k]||0)+1); cntShowLast(k); } });

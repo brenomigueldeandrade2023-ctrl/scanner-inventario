@@ -1199,6 +1199,7 @@
     <div class="cnt-actions">
       <button id="cnt-export" class="btn-primary btn-block" type="button">⬇ Gerar CSV Balanço (todos os produtos)</button>
       <button id="cnt-export-novos" class="btn-warn btn-block" type="button" style="margin-top:8px">🆕 CSV dos produtos novos (não no site)</button>
+      <button id="cnt-forcar" class="btn-secondary btn-block" type="button" style="margin-top:8px">📤 Forçar envio da minha contagem (corrigir total)</button>
       <div class="btn-row" style="margin-top:8px;gap:8px">
         <button id="cnt-refresh" class="btn-secondary" type="button" style="flex:1">🔄 Atualizar</button>
         <button id="cnt-nova" class="btn-secondary" type="button" style="flex:1">✨ Nova contagem</button>
@@ -4203,6 +4204,18 @@
     toast('Contagem nova iniciada (zerada)','success');
   }
 
+  // força re-enviar TODA a contagem local deste aparelho (corrige divergência servidor↔local).
+  // set absoluto = idempotente, não duplica; só sincroniza a linha deste device no servidor.
+  async function cntForcarEnvio(){
+    let n=0;
+    for(const k in cntCounts){ if((cntCounts[k]||0)>0){ cntDirty.add(k); n++; } }
+    if(n===0){ toast('Nada na contagem deste aparelho pra enviar','warn'); return; }
+    toast('Enviando '+n+' itens da sua contagem…');
+    await cntPush();
+    await cntPoll();
+    toast('Envio forçado concluído ('+n+' itens)','success');
+  }
+
   async function cntEnter(){
     cntMode=true; localStorage.setItem(LS_CNT_MODE,'1');
     document.body.classList.add('count-mode');
@@ -4248,6 +4261,7 @@
   $('cnt-novo-qminus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)-1); });
   $('cnt-novo-qplus').addEventListener('click', ()=>{ const i=$('cnt-novo-qtd'); i.value=Math.max(1,(parseInt(i.value,10)||1)+1); });
   $('cnt-list-search').addEventListener('input', e=>{ cntListFilter=e.target.value; cntScheduleRender(); });
+  $('cnt-forcar').addEventListener('click', cntForcarEnvio);
   // controle de quantidade direto no card do último bipado (sem rolar até a lista)
   $('cnt-last-minus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k, Math.max(0,(cntCounts[k]||0)-1)); cntShowLast(k); } });
   $('cnt-last-plus').addEventListener('click', ()=>{ const k=$('cnt-last').dataset.key; if(k){ cntSetQty(k,(cntCounts[k]||0)+1); cntShowLast(k); } });

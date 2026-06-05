@@ -4026,17 +4026,21 @@
   async function cntPush(){
     if(!cntSession){ await cntEnsureSession(); if(!cntSession) return; }
     if(cntDirty.size===0) return;
-    const skus=[...cntDirty];
-    const entries=skus.map(sku=>{
-      const e={sku,qty:cntCounts[sku]||0};
-      if(sku.indexOf('NEW:')===0 && cntNovos[sku]){ e.nome=cntNovos[sku].nome||''; e.p=cntNovos[sku].p||''; e.pm=cntNovos[sku].pm||''; }
-      return e;
-    });
-    try{
-      const r=await fetch(WORKER_URL+'/count/push',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({session_id:cntSession,device_id:deviceId,entries})}).then(x=>x.json());
-      if(r&&r.ok){ for(const sku of skus){ cntPushed[sku]=cntCounts[sku]||0; cntDirty.delete(sku); } cntSavePushed(); }
-    }catch{ /* mantém dirty, retenta */ }
+    const all=[...cntDirty];
+    for(let i=0;i<all.length;i+=80){               // lotes de 80 pra não estourar o batch do D1
+      const skus=all.slice(i,i+80);
+      const entries=skus.map(sku=>{
+        const e={sku,qty:cntCounts[sku]||0};
+        if(sku.indexOf('NEW:')===0 && cntNovos[sku]){ e.nome=cntNovos[sku].nome||''; e.p=cntNovos[sku].p||''; e.pm=cntNovos[sku].pm||''; }
+        return e;
+      });
+      try{
+        const r=await fetch(WORKER_URL+'/count/push',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({session_id:cntSession,device_id:deviceId,entries})}).then(x=>x.json());
+        if(r&&r.ok){ for(const sku of skus){ cntPushed[sku]=cntCounts[sku]||0; cntDirty.delete(sku); } cntSavePushed(); }
+        else break;                                 // erro → mantém o resto em dirty, retenta depois
+      }catch{ break; }
+    }
   }
 
   async function cntPoll(){
@@ -4209,10 +4213,12 @@
     await cntEnsureSession();
     await cntPoll();
     cntRender();
-    // sobe ao servidor os nomes/preços de produtos novos já cadastrados aqui (propaga pros outros)
-    let metaDirty=false;
-    for(const k in cntNovos){ if((cntCounts[k]||0)>0){ cntDirty.add(k); metaDirty=true; } }
-    if(metaDirty) cntPush();
+    // RE-ENVIO: sobe o que ficou pendente neste aparelho (bipado mas que não subiu —
+    // ex: caiu a net antes de sincronizar) + garante os metadados dos produtos novos.
+    let needPush=false;
+    for(const k in cntCounts){ if((cntCounts[k]||0)!==(cntPushed[k]||0)){ cntDirty.add(k); needPush=true; } }
+    for(const k in cntNovos){ if((cntCounts[k]||0)>0){ cntDirty.add(k); needPush=true; } }
+    if(needPush){ const n=cntDirty.size; await cntPush(); if(n>0) toast('Sincronizando '+n+' item(ns) pendente(s)…'); }
     if(!cntPollTimer) cntPollTimer=setInterval(cntPoll,CNT_POLL_MS);
     toast('Modo Contagem ON · conta do zero, sem mexer no Olist','success');
     window.scrollTo({top:0,behavior:'smooth'});

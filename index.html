@@ -4277,8 +4277,10 @@
     else if(act==='edit'){ const v=prompt(`Quantidade que VOCÊ contou de "${cntName(sku)}":`, cntCounts[sku]||0); if(v!==null) cntSetQty(sku, parseInt(v,10)||0); }
     else if(act==='del'){ cntRemover(sku); }
   });
-  // retoma modo contagem se estava ativo antes do reload
-  if(localStorage.getItem(LS_CNT_MODE)==='1'){ setTimeout(()=>{ cntEnter(); }, 600); }
+  // A contagem do zero terminou — o app abre SEMPRE em RECEBIMENTO (uso do dia-a-dia:
+  // bipar mercadoria que chega = entrada). O modo contagem agora é só MANUAL (botão),
+  // não auto-restaura mais, pra não abrir no modo errado nos aparelhos.
+  if(localStorage.getItem(LS_CNT_MODE)==='1'){ try{ localStorage.setItem(LS_CNT_MODE,'0'); }catch{} }
 
   // v27.4: auto-refresh saldos OLIST dos items vinculados a cada 15s.
   // Mantém badge "APP X ✓/⚠ OLIST Y" sempre atualizada sem usuario clicar.

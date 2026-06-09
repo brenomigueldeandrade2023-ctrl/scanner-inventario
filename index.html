@@ -2525,8 +2525,10 @@
       itemList.innerHTML = `<div class="empty-state">Nenhum item bate com "${escapeHtml(listFilter)}"</div>`;
     } else {
       itemList.innerHTML = '';
-      // v27.5: Paginação 20 por página + lista newest first
-      const indexedAll = filtered.map(it => ({ it, idx: items.indexOf(it) })).reverse();
+      // v27.5: Paginação 20 por página. v28: recém-bipados (touched_at) primeiro,
+      // depois o estoque carregado do OLIST — pra o que você acabou de bipar ficar SEMPRE no topo.
+      const indexedAll = filtered.map(it => ({ it, idx: items.indexOf(it) }))
+        .sort((a, b) => ((Number(b.it.touched_at) || 0) - (Number(a.it.touched_at) || 0)) || (b.idx - a.idx));
       const totalPages = Math.max(1, Math.ceil(indexedAll.length / ITEMS_PER_PAGE));
       if (currentPage > totalPages) currentPage = totalPages;
       if (currentPage < 1) currentPage = 1;
@@ -2704,6 +2706,7 @@
 
     if (existing) {
       existing.qty = (Number(existing.qty) || 0) + 1;
+      existing.touched_at = Date.now(); // v28: recém-bipado vai pro topo da lista
       if (prod) {
         if (!existing.sku) existing.sku = prod.sku;
         if (!existing.name) existing.name = prod.name;
@@ -2728,6 +2731,7 @@
         synced_qty: startSaldo,
         saldo_olist: startSaldo,
         sync_status: prod ? 'pending' : 'idle',
+        touched_at: Date.now(), // v28: recém-bipado vai pro topo da lista
       });
     }
     saveItems();

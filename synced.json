@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "updated_at": "2026-06-11T12:00:00Z",
-  "note": "Cadastro autoritativo OLIST. Scanner consome no init pra sincronizar catalogo + items. Formato v2: entries[sku] = {ean, name}. 11/06: +9 nao-vinculados contagem 10/06 (637V Ra ed Absolu so synced.json pois gtin Tiny vazio p/ preservar fotos).",
+  "updated_at": "2026-06-11T13:30:00Z",
+  "note": "Cadastro autoritativo OLIST. v2: entries[sku]={ean,name}. 11/06: +9 nao-vinculados + 41 gtin restaurados (bug batch paralelo) + Ameerat consolidado em 118V (ARAB-0418 era dup).",
   "entries": {
     "ARAB-0297": {
       "ean": "6297001158456",
@@ -43,10 +43,6 @@
       "ean": "6295199812075",
       "name": "Odyssey Mandarin Sky Vintage Edition Armaf - Masculino"
     },
-    "ARAB-0418": {
-      "ean": "6290362349037",
-      "name": "Ameerat Al Arab Sugar Crown Lattafa - Feminino"
-    },
     "ARAB-0419": {
       "ean": "6290171072775",
       "name": "Supremacy Not Only Intense Afnan - Masculino"
@@ -58,6 +54,174 @@
     "637V": {
       "ean": "6298043161695",
       "name": "Ra’ed Absolu Lattafa"
+    },
+    "213R": {
+      "ean": "6297001571255",
+      "name": "Rayhaan Tropical Vibe - Compartilhável"
+    },
+    "266Y": {
+      "ean": "6290360378602",
+      "name": "Cocoa Morado French Avenue - Feminino"
+    },
+    "425T": {
+      "ean": "614514555125",
+      "name": "Hawas Atlantis For Him Rasasi"
+    },
+    "478A": {
+      "ean": "614514555132",
+      "name": "Hawas For Him Viper Rasasi"
+    },
+    "584O": {
+      "ean": "6294019026883",
+      "name": "Mirsaal Valentine Le Falconé"
+    },
+    "743J": {
+      "ean": "6291100132058",
+      "name": "Story Of My Life Haramain"
+    },
+    "796Q": {
+      "ean": "6295199796177",
+      "name": "Asad Body Cream Ultimate Hydration - Masculino"
+    },
+    "849X": {
+      "ean": "6290360541723",
+      "name": "Aurora Scents Aura"
+    },
+    "902E": {
+      "ean": "6295138426585",
+      "name": "Indomitable Paris Corner"
+    },
+    "955L": {
+      "ean": "6292257642841",
+      "name": "Adyan Dalia Rouge"
+    },
+    "108S": {
+      "ean": "6298575112332",
+      "name": "Paris Corner Minha - Compartilhável"
+    },
+    "161Z": {
+      "ean": "6297001574201",
+      "name": "Momento Riifs"
+    },
+    "214G": {
+      "ean": "6290360592718",
+      "name": "Lattafa Artisan Ethnique - Feminino"
+    },
+    "267N": {
+      "ean": "1440060638871",
+      "name": "Bharara Viking Cairo - Masculino"
+    },
+    "320U": {
+      "ean": "850050062110",
+      "name": "Bharara Viking Kashmir - Unisex"
+    },
+    "373B": {
+      "ean": "6297001571323",
+      "name": "Rayhaan Obsidian - Masculino"
+    },
+    "426I": {
+      "ean": "6290362349938",
+      "name": "Ana abiyedh Scarlet - Feminino"
+    },
+    "479P": {
+      "ean": "6290360378619",
+      "name": "Genesis Libra French Avenue"
+    },
+    "532W": {
+      "ean": "6294015176117",
+      "name": "Armaf Éter Desert Rose - Feminino"
+    },
+    "585D": {
+      "ean": "6294019015238",
+      "name": "Sahari Rose Paris - Feminino"
+    },
+    "638K": {
+      "ean": "6290360591148",
+      "name": "Victoria Flower Orchid Maison Alhambra"
+    },
+    "691R": {
+      "ean": "860009040960",
+      "name": "Shahd Pour Homme Mush Mush - Masculino"
+    },
+    "797F": {
+      "ean": "074468218413",
+      "name": "Attracione Men - Masculino"
+    },
+    "850M": {
+      "ean": "6290362345749",
+      "name": "Kit YARA - 4 Pcs - 25ml"
+    },
+    "903T": {
+      "ean": "7841881033892",
+      "name": "Bidaya Mawwal - Feminino"
+    },
+    "956A": {
+      "ean": "6291108735961",
+      "name": "La Voie Maison Alhambra - Feminino"
+    },
+    "109H": {
+      "ean": "6290362340874",
+      "name": "Narissa et moi - Maison Alhambra - Feminino"
+    },
+    "321J": {
+      "ean": "6290522245742",
+      "name": "Dulzura Paris Corner - Feminino"
+    },
+    "374Q": {
+      "ean": "5055810043001",
+      "name": "Nawal Fluorite Al Wataniah - Compartilhável"
+    },
+    "427X": {
+      "ean": "6291108527900",
+      "name": "Le Chameau Arabia Haya - Feminino"
+    },
+    "533L": {
+      "ean": "6291107459134",
+      "name": "B.A.D Homme Maison Alhambra"
+    },
+    "586S": {
+      "ean": "6291108735589",
+      "name": "Lattafa Mohra - Compartilhável"
+    },
+    "639Z": {
+      "ean": "6297001571286",
+      "name": "Rayhaan Jungle Vibe - Compartilhável"
+    },
+    "692G": {
+      "ean": "6295010086722",
+      "name": "Kit 9pm - 4 PCs X 30ml"
+    },
+    "798U": {
+      "ean": "6291108736067",
+      "name": "La rouge Baroque Extreme - Feminino"
+    },
+    "851B": {
+      "ean": "6291108323250",
+      "name": "Redrigues rouge - Fragrance World"
+    },
+    "904I": {
+      "ean": "6290360599328",
+      "name": "Nebula II - Maison Alhambra"
+    },
+    "957P": {
+      "ean": "6290362345701",
+      "name": "Perfume em Óleo YARA Moi 20ml"
+    },
+    "110W": {
+      "ean": "6291103669445",
+      "name": "Chifon Belle Pour Femme - Emper"
+    },
+    "216K": {
+      "ean": "6430021526694",
+      "name": "Ministry Of Oud Gladiator’s Oath"
+    },
+    "163D": {
+      "ean": "6291108521045",
+      "name": "Chifon Rouge Emper - Feminino"
+    },
+    "118V": {
+      "ean": "6290362349037",
+      "name": "Ameerat Al Arab Sugar Crown Lattafa - Feminino"
     }
   }
 }
